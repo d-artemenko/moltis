@@ -20,6 +20,7 @@ use {
 use crate::server::AppState;
 
 const CLEANUP_EVERY_REQUESTS: u64 = 512;
+const RATE_LIMITED: &str = "RATE_LIMITED";
 
 #[derive(Clone)]
 pub struct RequestThrottle {
@@ -51,7 +52,7 @@ impl ThrottleScope {
         if path.starts_with("/share/") {
             return Some(Self::Share);
         }
-        if path == "/ws" {
+        if path.starts_with("/ws/") {
             return Some(Self::Ws);
         }
         None
@@ -261,6 +262,7 @@ fn rate_limited_response(path: String, retry_after: Duration) -> Response {
         (
             StatusCode::TOO_MANY_REQUESTS,
             Json(serde_json::json!({
+                "code": RATE_LIMITED,
                 "error": "too many requests",
                 "retry_after_seconds": retry_after_secs
             })),
@@ -354,9 +356,14 @@ mod tests {
     #[test]
     fn classify_ws_request() {
         assert_eq!(
-            ThrottleScope::from_request(&Method::GET, "/ws"),
+            ThrottleScope::from_request(&Method::GET, "/ws/chat"),
             Some(ThrottleScope::Ws)
         );
+    }
+
+    #[test]
+    fn legacy_ws_root_path_is_not_classified() {
+        assert_eq!(ThrottleScope::from_request(&Method::GET, "/ws"), None);
     }
 
     #[test]

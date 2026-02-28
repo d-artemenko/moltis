@@ -284,6 +284,10 @@ pub fn values_to_chat_messages(values: &[serde_json::Value]) -> Vec<ChatMessage>
 pub enum StreamEvent {
     /// Text content delta.
     Delta(String),
+    /// Raw provider event payload (for debugging API responses).
+    ProviderRaw(serde_json::Value),
+    /// Reasoning/planning text delta (not user-visible final answer text).
+    ReasoningDelta(String),
     /// A tool call has started (content_block_start with tool_use).
     ToolCallStart {
         /// Tool call ID from the provider.
@@ -343,6 +347,14 @@ pub trait LlmProvider: Send + Sync {
     /// content blocks instead of stripping the image data.
     fn supports_vision(&self) -> bool {
         false
+    }
+
+    /// Configured tool mode for this provider, if any.
+    ///
+    /// Returns `None` when the provider has no explicit tool mode override
+    /// (the caller should fall back to `Auto` behavior based on `supports_tools()`).
+    fn tool_mode(&self) -> Option<moltis_config::ToolMode> {
+        None
     }
 
     /// Stream a completion, yielding delta/done/error events.

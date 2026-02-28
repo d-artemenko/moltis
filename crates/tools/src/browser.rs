@@ -9,7 +9,6 @@
 
 use {
     crate::sandbox::SandboxRouter,
-    anyhow::Result,
     async_trait::async_trait,
     moltis_agents::tool_registry::AgentTool,
     moltis_browser::{BrowserManager, BrowserRequest},
@@ -17,6 +16,8 @@ use {
     tokio::sync::RwLock,
     tracing::debug,
 };
+
+use crate::error::Error;
 
 /// Browser automation tool for interacting with web pages.
 ///
@@ -96,6 +97,9 @@ impl AgentTool for BrowserTool {
          REQUIRED: You MUST specify an 'action' parameter. Example:\n\
          {\"action\": \"navigate\", \"url\": \"https://example.com\"}\n\n\
          Actions: navigate, screenshot, snapshot, click, type, scroll, evaluate, wait, close\n\n\
+         BROWSER CHOICE: optionally set \"browser\" to choose one (auto, chrome, chromium, \
+         edge, brave, opera, vivaldi, arc). If no browser is installed, Moltis will try \
+         to auto-install one.\n\n\
          SESSION: The browser session is automatically tracked. After 'navigate', \
          subsequent actions will reuse the same browser. No need to pass session_id.\n\n\
          WORKFLOW:\n\
@@ -119,6 +123,11 @@ impl AgentTool for BrowserTool {
                 "session_id": {
                     "type": "string",
                     "description": "Browser session ID (omit to create new session, or reuse existing)"
+                },
+                "browser": {
+                    "type": "string",
+                    "enum": ["auto", "chrome", "chromium", "edge", "brave", "opera", "vivaldi", "arc"],
+                    "description": "Browser to use for host mode. Default: auto (first installed browser)."
                 },
                 "url": {
                     "type": "string",
@@ -160,7 +169,7 @@ impl AgentTool for BrowserTool {
         })
     }
 
-    async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+    async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let mut params = params;
 
         // Browser sandbox mode follows the session sandbox mode from the shared router.
@@ -171,6 +180,10 @@ impl AgentTool for BrowserTool {
         let sandbox_mode = if let Some(ref router) = self.sandbox_router {
             router.is_sandboxed(session_key).await
         } else {
+            debug!(
+                session_key,
+                "browser running in host mode (no container backend)"
+            );
             false
         };
 
@@ -212,10 +225,11 @@ impl AgentTool for BrowserTool {
                         serde_json::from_value(params)?
                     } else {
                         // No URL either - return helpful error
-                        anyhow::bail!(
+                        return Err(Error::message(
                             "Missing required 'action' field. Use: \
-                             {{\"action\": \"navigate\", \"url\": \"https://...\"}} to open a page"
-                        );
+                             {\"action\": \"navigate\", \"url\": \"https://...\"} to open a page",
+                        )
+                        .into());
                     }
                 } else {
                     return Err(e.into());

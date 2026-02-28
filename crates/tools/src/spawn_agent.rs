@@ -2,13 +2,17 @@
 
 use std::sync::Arc;
 
-use {anyhow::Result, async_trait::async_trait, tracing::info};
+use {async_trait::async_trait, tracing::info};
 
-use moltis_agents::{
-    model::LlmProvider,
-    providers::ProviderRegistry,
-    runner::{RunnerEvent, run_agent_loop_with_context},
-    tool_registry::{AgentTool, ToolRegistry},
+use crate::error::Error;
+
+use {
+    moltis_agents::{
+        model::LlmProvider,
+        runner::{RunnerEvent, run_agent_loop_with_context},
+        tool_registry::{AgentTool, ToolRegistry},
+    },
+    moltis_providers::ProviderRegistry,
 };
 
 /// Maximum nesting depth for sub-agents (prevents infinite recursion).
@@ -94,10 +98,10 @@ impl AgentTool for SpawnAgentTool {
         })
     }
 
-    async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+    async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let task = params["task"]
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("missing required parameter: task"))?;
+            .ok_or_else(|| Error::message("missing required parameter: task"))?;
         let context = params["context"].as_str().unwrap_or("");
         let model_id = params["model"].as_str();
 
@@ -107,14 +111,17 @@ impl AgentTool for SpawnAgentTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         if depth >= MAX_SPAWN_DEPTH {
-            anyhow::bail!("maximum sub-agent nesting depth ({MAX_SPAWN_DEPTH}) exceeded");
+            return Err(Error::message(format!(
+                "maximum sub-agent nesting depth ({MAX_SPAWN_DEPTH}) exceeded"
+            ))
+            .into());
         }
 
         // Resolve provider.
         let provider = if let Some(id) = model_id {
             let reg = self.provider_registry.read().await;
             reg.get(id)
-                .ok_or_else(|| anyhow::anyhow!("unknown model: {id}"))?
+                .ok_or_else(|| Error::message(format!("unknown model: {id}")))?
         } else {
             Arc::clone(&self.default_provider)
         };
@@ -237,7 +244,7 @@ mod tests {
             &self,
             _messages: &[ChatMessage],
             _tools: &[serde_json::Value],
-        ) -> Result<CompletionResponse> {
+        ) -> anyhow::Result<CompletionResponse> {
             Ok(CompletionResponse {
                 text: Some(self.response.clone()),
                 tool_calls: vec![],
@@ -329,7 +336,7 @@ mod tests {
                 serde_json::json!({})
             }
 
-            async fn execute(&self, _: serde_json::Value) -> Result<serde_json::Value> {
+            async fn execute(&self, _: serde_json::Value) -> anyhow::Result<serde_json::Value> {
                 Ok(serde_json::json!("dummy"))
             }
         }
@@ -349,7 +356,7 @@ mod tests {
                 serde_json::json!({})
             }
 
-            async fn execute(&self, p: serde_json::Value) -> Result<serde_json::Value> {
+            async fn execute(&self, p: serde_json::Value) -> anyhow::Result<serde_json::Value> {
                 Ok(p)
             }
         }
