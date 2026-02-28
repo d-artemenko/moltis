@@ -186,47 +186,116 @@
                         <h1 id="llm-providers"><a class="header" href="#llm-providers">LLM Providers</a></h1>
 <p>Moltis supports multiple LLM providers through a trait-based architecture.
 Configure providers through the web UI or directly in configuration files.</p>
-<h2 id="currently-available-providers"><a class="header" href="#currently-available-providers">Currently Available Providers*</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Provider</th><th>Auth</th><th>Notes</th></tr></thead><tbody>
-<tr><td><strong>OpenAI Codex</strong></td><td>OAuth</td><td>Codex-focused cloud models</td></tr>
-<tr><td><strong>GitHub Copilot</strong></td><td>OAuth</td><td>Requires active Copilot subscription</td></tr>
-<tr><td><strong>Local LLM</strong></td><td>Local runtime</td><td>Runs models on your machine</td></tr>
+<h2 id="available-providers"><a class="header" href="#available-providers">Available Providers</a></h2>
+<h3 id="api-key-providers"><a class="header" href="#api-key-providers">API Key Providers</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Provider</th><th>Config Name</th><th>Env Variable</th><th>Features</th></tr></thead><tbody>
+<tr><td><strong>Anthropic</strong></td><td><code>anthropic</code></td><td><code>ANTHROPIC_API_KEY</code></td><td>Streaming, tools, vision</td></tr>
+<tr><td><strong>OpenAI</strong></td><td><code>openai</code></td><td><code>OPENAI_API_KEY</code></td><td>Streaming, tools, vision, model discovery</td></tr>
+<tr><td><strong>Google Gemini</strong></td><td><code>gemini</code></td><td><code>GEMINI_API_KEY</code></td><td>Streaming, tools, vision, model discovery</td></tr>
+<tr><td><strong>DeepSeek</strong></td><td><code>deepseek</code></td><td><code>DEEPSEEK_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
+<tr><td><strong>Mistral</strong></td><td><code>mistral</code></td><td><code>MISTRAL_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
+<tr><td><strong>Groq</strong></td><td><code>groq</code></td><td><code>GROQ_API_KEY</code></td><td>Streaming</td></tr>
+<tr><td><strong>xAI (Grok)</strong></td><td><code>xai</code></td><td><code>XAI_API_KEY</code></td><td>Streaming</td></tr>
+<tr><td><strong>OpenRouter</strong></td><td><code>openrouter</code></td><td><code>OPENROUTER_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
+<tr><td><strong>Cerebras</strong></td><td><code>cerebras</code></td><td><code>CEREBRAS_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
+<tr><td><strong>MiniMax</strong></td><td><code>minimax</code></td><td><code>MINIMAX_API_KEY</code></td><td>Streaming, tools</td></tr>
+<tr><td><strong>Moonshot (Kimi)</strong></td><td><code>moonshot</code></td><td><code>MOONSHOT_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
+<tr><td><strong>Venice</strong></td><td><code>venice</code></td><td><code>VENICE_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
+<tr><td><strong>Z.AI (Zhipu)</strong></td><td><code>zai</code></td><td><code>Z_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr>
 </tbody></table>
 </div>
-<p>*More providers are coming soon.</p>
+<h3 id="oauth-providers"><a class="header" href="#oauth-providers">OAuth Providers</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Provider</th><th>Config Name</th><th>Notes</th></tr></thead><tbody>
+<tr><td><strong>OpenAI Codex</strong></td><td><code>openai-codex</code></td><td>OAuth flow via web UI</td></tr>
+<tr><td><strong>GitHub Copilot</strong></td><td><code>github-copilot</code></td><td>Requires active Copilot subscription</td></tr>
+</tbody></table>
+</div>
+<h3 id="local"><a class="header" href="#local">Local</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Provider</th><th>Config Name</th><th>Notes</th></tr></thead><tbody>
+<tr><td><strong>Ollama</strong></td><td><code>ollama</code></td><td>Local or remote Ollama instance</td></tr>
+<tr><td><strong>Local LLM</strong></td><td><code>local-llm</code></td><td>Runs GGUF models directly on your machine</td></tr>
+</tbody></table>
+</div>
+<h3 id="custom-openai-compatible"><a class="header" href="#custom-openai-compatible">Custom OpenAI-Compatible</a></h3>
+<p>Any OpenAI-compatible endpoint can be added with a <code>custom-</code> prefix:</p>
+<pre><code class="language-toml">[providers.custom-myservice]
+enabled = true
+api_key = "..."
+base_url = "https://my-service.example.com/v1"
+models = ["my-model"]
+</code></pre>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <h3 id="via-web-ui-recommended"><a class="header" href="#via-web-ui-recommended">Via Web UI (Recommended)</a></h3>
 <ol>
 <li>Open Moltis in your browser.</li>
-<li>Go to <strong>Settings</strong> -&gt; <strong>Providers</strong>.</li>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong>.</li>
 <li>Choose a provider card.</li>
 <li>Complete OAuth or enter your API key.</li>
 <li>Select your preferred model.</li>
 </ol>
 <h3 id="via-configuration-files"><a class="header" href="#via-configuration-files">Via Configuration Files</a></h3>
-<p>Provider credentials are stored in <code>~/.config/moltis/provider_keys.json</code>:</p>
-<pre><code class="language-json">{
-  "openai-codex": {
-    "model": "gpt-5.2-codex"
-  }
-}
-</code></pre>
-<p>Enable providers in <code>moltis.toml</code>:</p>
+<p>Configure providers in <code>moltis.toml</code>:</p>
 <pre><code class="language-toml">[providers]
-offered = ["openai-codex", "github-copilot", "local-llm"]
+offered = ["anthropic", "openai", "gemini"]
 
-[providers.local-llm]
+[providers.anthropic]
 enabled = true
-models = ["qwen2.5-coder-7b-q4_k_m"]
+
+[providers.openai]
+enabled = true
+models = ["gpt-5.3", "gpt-5.2"]
+stream_transport = "sse"              # "sse", "websocket", or "auto"
+
+[providers.gemini]
+enabled = true
+models = ["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash"]
+# api_key = "..."                     # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var
+# fetch_models = true                 # Discover models from the API
+# base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 [chat]
 priority_models = ["gpt-5.2"]
 </code></pre>
+<h3 id="provider-entry-options"><a class="header" href="#provider-entry-options">Provider Entry Options</a></h3>
+<p>Each provider supports these options:</p>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>enabled</code></td><td><code>true</code></td><td>Enable or disable the provider</td></tr>
+<tr><td><code>api_key</code></td><td>—</td><td>API key (overrides env var)</td></tr>
+<tr><td><code>base_url</code></td><td>—</td><td>Override API endpoint URL</td></tr>
+<tr><td><code>models</code></td><td><code>[]</code></td><td>Preferred models shown first in the picker</td></tr>
+<tr><td><code>fetch_models</code></td><td><code>true</code></td><td>Discover available models from the API</td></tr>
+<tr><td><code>stream_transport</code></td><td><code>"sse"</code></td><td><code>"sse"</code>, <code>"websocket"</code>, or <code>"auto"</code></td></tr>
+<tr><td><code>alias</code></td><td>—</td><td>Custom label for metrics</td></tr>
+<tr><td><code>tool_mode</code></td><td><code>"auto"</code></td><td><code>"auto"</code>, <code>"native"</code>, <code>"text"</code>, or <code>"off"</code></td></tr>
+</tbody></table>
+</div>
 <h2 id="provider-setup"><a class="header" href="#provider-setup">Provider Setup</a></h2>
-<h3 id="openai-codex"><a class="header" href="#openai-codex">OpenAI Codex</a></h3>
-<p>OpenAI Codex uses OAuth token import and OAuth-based access.</p>
+<h3 id="google-gemini"><a class="header" href="#google-gemini">Google Gemini</a></h3>
+<p>Google Gemini uses an API key from <a href="https://aistudio.google.com/">Google AI Studio</a>.</p>
 <ol>
-<li>Go to <strong>Settings</strong> -&gt; <strong>Providers</strong> -&gt; <strong>OpenAI Codex</strong>.</li>
+<li>Get an API key from Google AI Studio.</li>
+<li>Set <code>GEMINI_API_KEY</code> in your environment (or use <code>GOOGLE_API_KEY</code>).</li>
+<li>Gemini models appear automatically in the model picker.</li>
+</ol>
+<pre><code class="language-toml">[providers.gemini]
+enabled = true
+models = ["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash"]
+</code></pre>
+<p>Gemini supports native tool calling, vision/multimodal inputs, streaming, and automatic model discovery.</p>
+<h3 id="anthropic"><a class="header" href="#anthropic">Anthropic</a></h3>
+<ol>
+<li>Get an API key from <a href="https://console.anthropic.com/">console.anthropic.com</a>.</li>
+<li>Set <code>ANTHROPIC_API_KEY</code> in your environment.</li>
+</ol>
+<h3 id="openai"><a class="header" href="#openai">OpenAI</a></h3>
+<ol>
+<li>Get an API key from <a href="https://platform.openai.com/">platform.openai.com</a>.</li>
+<li>Set <code>OPENAI_API_KEY</code> in your environment.</li>
+</ol>
+<h3 id="openai-codex"><a class="header" href="#openai-codex">OpenAI Codex</a></h3>
+<p>OpenAI Codex uses OAuth-based access.</p>
+<ol>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong> → <strong>OpenAI Codex</strong>.</li>
 <li>Click <strong>Connect</strong> and complete the auth flow.</li>
 <li>Choose a Codex model.</li>
 </ol>
@@ -254,7 +323,7 @@ Tokens are saved to the config volume and picked up by the gateway automatically
 <h3 id="github-copilot"><a class="header" href="#github-copilot">GitHub Copilot</a></h3>
 <p>GitHub Copilot uses OAuth authentication.</p>
 <ol>
-<li>Go to <strong>Settings</strong> -&gt; <strong>Providers</strong> -&gt; <strong>GitHub Copilot</strong>.</li>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong> → <strong>GitHub Copilot</strong>.</li>
 <li>Click <strong>Connect</strong>.</li>
 <li>Complete the GitHub OAuth flow.</li>
 </ol>
@@ -284,10 +353,16 @@ CLI:</p>
 <p>Requires an active GitHub Copilot subscription.</p>
 </div>
 </div>
+<h3 id="ollama"><a class="header" href="#ollama">Ollama</a></h3>
+<p>Ollama auto-detects when running at <code>http://127.0.0.1:11434</code>. No API key needed.</p>
+<pre><code class="language-toml">[providers.ollama]
+enabled = true
+# base_url = "http://127.0.0.1:11434/v1"  # Override for remote Ollama
+</code></pre>
 <h3 id="local-llm"><a class="header" href="#local-llm">Local LLM</a></h3>
-<p>Local LLM runs models directly on your machine.</p>
+<p>Local LLM runs GGUF models directly on your machine.</p>
 <ol>
-<li>Go to <strong>Settings</strong> -&gt; <strong>Providers</strong> -&gt; <strong>Local LLM</strong>.</li>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong> → <strong>Local LLM</strong>.</li>
 <li>Choose a model from the local registry or download one.</li>
 <li>Save and select it as your active model.</li>
 </ol>

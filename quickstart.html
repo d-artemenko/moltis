@@ -199,18 +199,23 @@
 🌐 Open http://localhost:13131 in your browser
 </code></pre>
 <h2 id="3-configure-a-provider"><a class="header" href="#3-configure-a-provider">3. Configure a Provider</a></h2>
-<p>You need an LLM provider configured to chat. Current options are:</p>
-<h3 id="option-a-openai-codex-oauth"><a class="header" href="#option-a-openai-codex-oauth">Option A: OpenAI Codex (OAuth)</a></h3>
+<p>You need an LLM provider configured to chat. The fastest options:</p>
+<h3 id="option-a-api-key-anthropic-openai-gemini-etc"><a class="header" href="#option-a-api-key-anthropic-openai-gemini-etc">Option A: API Key (Anthropic, OpenAI, Gemini, etc.)</a></h3>
 <ol>
-<li>In Moltis, go to <strong>Settings</strong> → <strong>Providers</strong></li>
-<li>Click <strong>OpenAI Codex</strong> → <strong>Connect</strong></li>
-<li>Complete the OAuth flow</li>
+<li>Set an API key as an environment variable and restart Moltis:
+<pre><code class="language-bash">export ANTHROPIC_API_KEY="sk-ant-..."   # Anthropic
+export OPENAI_API_KEY="sk-..."          # OpenAI
+export GEMINI_API_KEY="..."             # Google Gemini
+</code></pre>
+</li>
+<li>Models appear automatically in the model picker.</li>
 </ol>
-<h3 id="option-b-github-copilot-oauth"><a class="header" href="#option-b-github-copilot-oauth">Option B: GitHub Copilot (OAuth)</a></h3>
+<p>Or configure via the web UI: <strong>Settings</strong> → <strong>Providers</strong> → enter your API key.</p>
+<h3 id="option-b-oauth-codex--copilot"><a class="header" href="#option-b-oauth-codex--copilot">Option B: OAuth (Codex / Copilot)</a></h3>
 <ol>
 <li>In Moltis, go to <strong>Settings</strong> → <strong>Providers</strong></li>
-<li>Click <strong>GitHub Copilot</strong> → <strong>Connect</strong></li>
-<li>Complete the GitHub OAuth flow</li>
+<li>Click <strong>OpenAI Codex</strong> or <strong>GitHub Copilot</strong> → <strong>Connect</strong></li>
+<li>Complete the OAuth flow</li>
 </ol>
 <h3 id="option-c-local-llm-offline"><a class="header" href="#option-c-local-llm-offline">Option C: Local LLM (Offline)</a></h3>
 <ol>
@@ -218,7 +223,7 @@
 <li>Click <strong>Local LLM</strong></li>
 <li>Choose a model and save</li>
 </ol>
-<p><em>More providers are coming soon.</em></p>
+<p>See <a href="providers.html">Providers</a> for the full list of supported providers.</p>
 <h2 id="4-chat"><a class="header" href="#4-chat">4. Chat!</a></h2>
 <p>Go to the <strong>Chat</strong> tab and start a conversation:</p>
 <pre><code>You: Write a Python function to check if a number is prime

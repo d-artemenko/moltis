@@ -190,6 +190,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
+<li><strong>Gemini first-class provider</strong>: Google Gemini is now registered via the OpenAI-compatible endpoint with native tool calling, vision/multimodal support, streaming, and model discovery. Replaces the previous genai-backed fallback that lacked tool support. Supports both <code>GEMINI_API_KEY</code> and <code>GOOGLE_API_KEY</code> environment variables</li>
 <li><strong>Podman sandbox backend</strong> — Podman as a first-class sandbox backend. Set <code>backend = "podman"</code> or let auto-detection prefer it over Docker (Apple Container → Podman → Docker → restricted-host). Uses the <code>podman</code> CLI directly (no socket compatibility needed)</li>
 <li><strong>Trusted network mode</strong>: sandbox containers now default to <code>sandbox.network = "trusted"</code>, routing outbound traffic through an HTTP CONNECT proxy with full audit logging. When <code>trusted_domains</code> is empty (the default), all domains are allowed (audit-only mode); when configured, only listed domains pass without approval. Includes real-time network audit log with domain, protocol, and action filtering via Settings &gt; Network Audit. Configurable via <code>sandbox.trusted_domains</code> in <code>moltis.toml</code>. Proxy env vars (<code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>NO_PROXY</code>) are now automatically injected into both Docker and Apple Container sandboxes, and the proxy binds to <code>0.0.0.0</code> so it is reachable from container VMs. The proxy rejects connections from non-private IPs (only loopback, RFC 1918, link-local, and CGNAT ranges are accepted)</li>
 <li><strong>New <code>moltis-network-filter</code> crate</strong>: domain filtering, proxy, and audit buffer logic extracted from <code>moltis-tools</code> and <code>moltis-gateway</code> into a standalone crate with feature flags (<code>proxy</code>, <code>service</code>, <code>metrics</code>). The macOS app can now depend on it directly for network audit log display via <code>moltis-swift-bridge</code></li>
@@ -970,6 +971,15 @@ when no container runtime is available.</li>
 tests and blocks all package builds (deb, rpm, arch, AppImage, snap,
 Homebrew, Docker) if they fail.</li>
 </ul>
+<h3 id="added-30"><a class="header" href="#added-30">Added</a></h3>
+<ul>
+<li><strong>XML tag stripping</strong>: Strip internal XML tags from LLM responses to prevent
+tag leakage in chat (thinking, reasoning, scratchpad, etc.)</li>
+<li><strong>Runtime model metadata</strong>: Fetch model metadata from provider APIs for
+accurate context window detection during auto-compaction</li>
+<li><strong>Run detail UI</strong>: Panel showing tool calls and message flow for agent runs,
+accessible via expandable button on assistant messages</li>
+</ul>
 <h3 id="fixed-32"><a class="header" href="#fixed-32">Fixed</a></h3>
 <ul>
 <li><strong>Docker TLS setup</strong>: All Docker examples now expose port 13132 for CA
@@ -981,7 +991,7 @@ run against the default gateway (wrong server) instead of the onboarding-auth
 gateway. Tightened regex to <code>/\/auth\.spec/</code>.</li>
 </ul>
 <h2 id="085---2026-02-11"><a class="header" href="#085---2026-02-11">[0.8.5] - 2026-02-11</a></h2>
-<h3 id="added-30"><a class="header" href="#added-30">Added</a></h3>
+<h3 id="added-31"><a class="header" href="#added-31">Added</a></h3>
 <ul>
 <li><strong>CLI <code>--version</code> flag</strong>: <code>moltis --version</code> now prints the version.</li>
 <li><strong>Askama HTML rendering</strong>: SPA index and social metadata templates use
@@ -1043,7 +1053,7 @@ release workflows to use the same clippy command and flags
 prevents release-only clippy failures from command drift.</li>
 </ul>
 <h2 id="080---2026-02-11"><a class="header" href="#080---2026-02-11">[0.8.0] - 2026-02-11</a></h2>
-<h3 id="added-31"><a class="header" href="#added-31">Added</a></h3>
+<h3 id="added-32"><a class="header" href="#added-32">Added</a></h3>
 <ul>
 <li><strong>Instance-scoped container naming</strong>: Browser and sandbox container/image
 prefixes now derive from the configured instance name, so multiple Moltis
@@ -1073,7 +1083,7 @@ history so the release workflow <code>cargo fmt --all -- --check</code> passes f
 tagged builds.</li>
 </ul>
 <h2 id="070---2026-02-11"><a class="header" href="#070---2026-02-11">[0.7.0] - 2026-02-11</a></h2>
-<h3 id="added-32"><a class="header" href="#added-32">Added</a></h3>
+<h3 id="added-33"><a class="header" href="#added-33">Added</a></h3>
 <ul>
 <li><strong>HTTP endpoint throttling</strong>: Added gateway-level per-IP rate limits for
 login (<code>/api/auth/login</code>), auth API routes, general API routes, and WebSocket
@@ -1105,7 +1115,7 @@ flags (<code>-Z unstable-options</code>, <code>--timings</code>).</li>
 <code>use</code> statement; replaced <code>.unwrap()</code> with <code>.expect()</code> in auth route tests.</li>
 </ul>
 <h2 id="060---2026-02-10"><a class="header" href="#060---2026-02-10">[0.6.0] - 2026-02-10</a></h2>
-<h3 id="added-33"><a class="header" href="#added-33">Added</a></h3>
+<h3 id="added-34"><a class="header" href="#added-34">Added</a></h3>
 <ul>
 <li><strong>CalDAV integration</strong>: New <code>moltis-caldav</code> crate providing calendar CRUD
 operations (list calendars, list/create/update/delete events) via the CalDAV
@@ -1163,7 +1173,7 @@ on local connections, because the <code>has_password()</code> check returned fal
 even though <code>is_setup_complete()</code> was true.</li>
 </ul>
 <h2 id="050---2026-02-09"><a class="header" href="#050---2026-02-09">[0.5.0] - 2026-02-09</a></h2>
-<h3 id="added-34"><a class="header" href="#added-34">Added</a></h3>
+<h3 id="added-35"><a class="header" href="#added-35">Added</a></h3>
 <ul>
 <li><strong><code>moltis doctor</code> command</strong>: Comprehensive health check that validates config,
 audits security (file permissions, API keys in config), checks directory and
@@ -1186,7 +1196,7 @@ at least one scope explicitly (least-privilege by default).</li>
 fix <code>clippy::unnecessary_unwrap</code> that broke the v0.4.0 release build.</li>
 </ul>
 <h2 id="040---2026-02-09"><a class="header" href="#040---2026-02-09">[0.4.0] - 2026-02-09</a></h2>
-<h3 id="added-35"><a class="header" href="#added-35">Added</a></h3>
+<h3 id="added-36"><a class="header" href="#added-36">Added</a></h3>
 <ul>
 <li><strong>Auto-import external OAuth tokens</strong>: At startup, auto-detected provider
 tokens (e.g. Codex CLI <code>~/.codex/auth.json</code>) are imported into the central
@@ -1302,7 +1312,7 @@ binding, fixing <code>get_user_location</code> failures on first Telegram messag
 <li><strong>Cargo.lock sync</strong>: Lock file now matches workspace version.</li>
 </ul>
 <h2 id="030---2026-02-08"><a class="header" href="#030---2026-02-08">[0.3.0] - 2026-02-08</a></h2>
-<h3 id="added-36"><a class="header" href="#added-36">Added</a></h3>
+<h3 id="added-37"><a class="header" href="#added-37">Added</a></h3>
 <ul>
 <li>
 <p><strong>Silent replies</strong>: The system prompt instructs the LLM to return an empty
@@ -1492,7 +1502,7 @@ Rust structs instead of ad-hoc <code>serde_json::Value</code> maps.</li>
 personality bootstrapping.</li>
 </ul>
 <h2 id="029---2026-02-08"><a class="header" href="#029---2026-02-08">[0.2.9] - 2026-02-08</a></h2>
-<h3 id="added-37"><a class="header" href="#added-37">Added</a></h3>
+<h3 id="added-38"><a class="header" href="#added-38">Added</a></h3>
 <ul>
 <li><strong>Voice provider policy controls</strong>: Added provider-list allowlists so config templates and runtime voice setup can explicitly limit shown/allowed TTS and STT providers.</li>
 <li><strong>Typed voice provider metadata</strong>: Expanded voice provider metadata and preference handling to use typed flows across gateway and UI paths.</li>
@@ -1539,7 +1549,7 @@ hide <code>create_skill</code>/<code>update_skill</code> and leave only a subset
 Chat runs now use configured tool policy for runtime filtering without globally
 restricting tools based on discovered skill metadata.</li>
 </ul>
-<h3 id="added-38"><a class="header" href="#added-38">Added</a></h3>
+<h3 id="added-39"><a class="header" href="#added-39">Added</a></h3>
 <ul>
 <li>
 <p><strong>Voice Provider Management UI</strong>: Configure TTS and STT providers from Settings &gt; Voice</p>
@@ -1765,7 +1775,7 @@ with vertical scrolling instead of being scaled down to fit the viewport.</li>
 <li><strong>CI security</strong>: Add <code>persist-credentials: false</code> to docs workflow checkout (fixes zizmor artipacked warning)</li>
 </ul>
 <h2 id="014---2026-02-06"><a class="header" href="#014---2026-02-06">[0.1.4] - 2026-02-06</a></h2>
-<h3 id="added-39"><a class="header" href="#added-39">Added</a></h3>
+<h3 id="added-40"><a class="header" href="#added-40">Added</a></h3>
 <ul>
 <li>
 <p><strong><code>--no-tls</code> CLI flag</strong>: <code>--no-tls</code> flag and <code>MOLTIS_NO_TLS</code> environment variable to disable

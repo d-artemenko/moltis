@@ -205,17 +205,23 @@ agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
 agent_max_iterations = 25       # Max tool call iterations per run
 </code></pre>
 <h2 id="llm-providers"><a class="header" href="#llm-providers">LLM Providers</a></h2>
-<p>Provider API keys are stored separately in <code>~/.config/moltis/provider_keys.json</code> for security. Configure them through the web UI or directly in the JSON file.</p>
+<p>Configure providers through the web UI or directly in <code>moltis.toml</code>. API keys can be set
+via environment variables (e.g. <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>GEMINI_API_KEY</code>) or
+in the config file.</p>
 <pre><code class="language-toml">[providers]
-offered = ["openai", "anthropic", "local-llm"]
+offered = ["anthropic", "openai", "gemini"]
+
+[providers.anthropic]
+enabled = true
 
 [providers.openai]
 enabled = true
 models = ["gpt-5.3", "gpt-5.2"]
 stream_transport = "sse"        # "sse", "websocket", or "auto"
 
-[providers.anthropic]
+[providers.gemini]
 enabled = true
+models = ["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash"]
 
 [providers.local-llm]
 enabled = true
@@ -224,8 +230,7 @@ models = ["qwen2.5-coder-7b-q4_k_m"]
 [chat]
 priority_models = ["gpt-5.2"]
 </code></pre>
-<p>See <a href="providers.html">Providers</a> for detailed provider configuration.</p>
-<p><em>More providers are coming soon.</em></p>
+<p>See <a href="providers.html">Providers</a> for the full list of supported providers and configuration options.</p>
 <h2 id="sandbox-configuration"><a class="header" href="#sandbox-configuration">Sandbox Configuration</a></h2>
 <p>Commands run inside isolated containers for security:</p>
 <pre><code class="language-toml">[tools.exec.sandbox]
@@ -436,7 +441,7 @@ agent_timeout_secs = 600
 agent_max_iterations = 25
 
 [providers]
-offered = ["openai", "anthropic", "local-llm"]
+offered = ["anthropic", "openai", "gemini"]
 
 [tools.exec.sandbox]
 mode = "all"
