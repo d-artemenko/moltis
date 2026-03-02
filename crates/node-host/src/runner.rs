@@ -380,10 +380,10 @@ impl NodeHost {
             }
         });
 
-        if let Ok(json) = serde_json::to_string(&frame) {
-            if let Err(e) = ws_tx.send(Message::Text(json.into())).await {
-                warn!(invoke_id = %invoke_id, error = %e, "failed to send invoke result");
-            }
+        if let Ok(json) = serde_json::to_string(&frame)
+            && let Err(e) = ws_tx.send(Message::Text(json.into())).await
+        {
+            warn!(invoke_id = %invoke_id, error = %e, "failed to send invoke result");
         }
     }
 
@@ -403,10 +403,10 @@ impl NodeHost {
             }
         });
 
-        if let Ok(json) = serde_json::to_string(&frame) {
-            if let Err(e) = ws_tx.send(Message::Text(json.into())).await {
-                warn!(invoke_id = %invoke_id, error = %e, "failed to send invoke error");
-            }
+        if let Ok(json) = serde_json::to_string(&frame)
+            && let Err(e) = ws_tx.send(Message::Text(json.into())).await
+        {
+            warn!(invoke_id = %invoke_id, error = %e, "failed to send invoke error");
         }
     }
 }

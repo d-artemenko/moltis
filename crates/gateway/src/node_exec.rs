@@ -150,10 +150,10 @@ pub async fn resolve_node_id(state: &Arc<GatewayState>, node_ref: &str) -> Optio
     // Try display name match (case-insensitive).
     let lower = node_ref.to_lowercase();
     for node in inner.nodes.list() {
-        if let Some(name) = &node.display_name {
-            if name.to_lowercase() == lower {
-                return Some(node.node_id.clone());
-            }
+        if let Some(name) = &node.display_name
+            && name.to_lowercase() == lower
+        {
+            return Some(node.node_id.clone());
         }
     }
 
