@@ -5,8 +5,10 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use {
+    async_trait::async_trait,
+    serde::{Deserialize, Serialize},
+};
 
 use crate::state::GatewayState;
 
@@ -19,13 +21,7 @@ pub struct NodeExecResult {
 }
 
 /// Environment variables that are safe to forward to a remote node.
-const SAFE_ENV_ALLOWLIST: &[&str] = &[
-    "TERM",
-    "LANG",
-    "COLORTERM",
-    "NO_COLOR",
-    "FORCE_COLOR",
-];
+const SAFE_ENV_ALLOWLIST: &[&str] = &["TERM", "LANG", "COLORTERM", "NO_COLOR", "FORCE_COLOR"];
 
 /// Environment variable prefixes that are safe to forward.
 const SAFE_ENV_PREFIX_ALLOWLIST: &[&str] = &["LC_"];
@@ -82,9 +78,10 @@ pub async fn exec_on_node(
     // Look up node connection.
     let conn_id = {
         let inner = state.inner.read().await;
-        let node = inner.nodes.get(node_id).ok_or_else(|| {
-            anyhow::anyhow!("node '{node_id}' not connected")
-        })?;
+        let node = inner
+            .nodes
+            .get(node_id)
+            .ok_or_else(|| anyhow::anyhow!("node '{node_id}' not connected"))?;
         node.conn_id.clone()
     };
 
@@ -103,9 +100,10 @@ pub async fn exec_on_node(
 
     {
         let inner = state.inner.read().await;
-        let node_client = inner.clients.get(&conn_id).ok_or_else(|| {
-            anyhow::anyhow!("node connection lost")
-        })?;
+        let node_client = inner
+            .clients
+            .get(&conn_id)
+            .ok_or_else(|| anyhow::anyhow!("node connection lost"))?;
         if !node_client.send(&event_json) {
             anyhow::bail!("failed to send invoke to node");
         }
@@ -131,12 +129,7 @@ pub async fn exec_on_node(
             anyhow::bail!("node invoke cancelled");
         },
         Err(_) => {
-            state
-                .inner
-                .write()
-                .await
-                .pending_invokes
-                .remove(&invoke_id);
+            state.inner.write().await.pending_invokes.remove(&invoke_id);
             anyhow::bail!("node invoke timeout after {timeout_secs}s");
         },
     };
@@ -208,10 +201,7 @@ fn parse_exec_result(value: &serde_json::Value) -> anyhow::Result<NodeExecResult
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string(),
-            exit_code: value
-                .get("exitCode")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32,
+            exit_code: value.get("exitCode").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
         });
     }
 

@@ -339,17 +339,11 @@ impl AgentTool for ExecTool {
                     )
                 })?;
 
-            let node_id =
-                provider
-                    .resolve_node_id(&node_ref)
-                    .await
-                    .ok_or_else(|| {
-                        Error::message(format!("node '{node_ref}' not found or not connected"))
-                    })?;
+            let node_id = provider.resolve_node_id(&node_ref).await.ok_or_else(|| {
+                Error::message(format!("node '{node_ref}' not found or not connected"))
+            })?;
 
-            let cwd = params
-                .get("working_dir")
-                .and_then(|v| v.as_str());
+            let cwd = params.get("working_dir").and_then(|v| v.as_str());
 
             info!(
                 command,

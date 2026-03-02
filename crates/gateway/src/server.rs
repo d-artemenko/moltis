@@ -3112,11 +3112,10 @@ pub async fn prepare_gateway(
 
         // When tools.exec.host = "node", route commands to a remote node.
         if config.tools.exec.host == "node" {
-            let provider = Arc::new(crate::node_exec::GatewayNodeExecProvider::new(
-                Arc::clone(&state),
-            ));
-            exec_tool =
-                exec_tool.with_node_provider(provider, config.tools.exec.node.clone());
+            let provider = Arc::new(crate::node_exec::GatewayNodeExecProvider::new(Arc::clone(
+                &state,
+            )));
+            exec_tool = exec_tool.with_node_provider(provider, config.tools.exec.node.clone());
         }
 
         let cron_tool = moltis_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));

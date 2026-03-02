@@ -37,9 +37,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         let req = store
                             .request_pair(device_id, display_name, platform, public_key)
                             .await
-                            .map_err(|e| {
-                                ErrorShape::new(error_codes::INTERNAL, e.to_string())
-                            })?;
+                            .map_err(|e| ErrorShape::new(error_codes::INTERNAL, e.to_string()))?;
                         (
                             req.id,
                             req.nonce,
@@ -90,9 +88,10 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|ctx| {
             Box::pin(async move {
                 if let Some(store) = get_pairing_store(&ctx.state) {
-                    let pending = store.list_pending().await.map_err(|e| {
-                        ErrorShape::new(error_codes::INTERNAL, e.to_string())
-                    })?;
+                    let pending = store
+                        .list_pending()
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::INTERNAL, e.to_string()))?;
                     let list: Vec<_> = pending
                         .iter()
                         .map(|r| {
@@ -228,9 +227,10 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|ctx| {
             Box::pin(async move {
                 if let Some(store) = get_pairing_store(&ctx.state) {
-                    let devices = store.list_devices().await.map_err(|e| {
-                        ErrorShape::new(error_codes::INTERNAL, e.to_string())
-                    })?;
+                    let devices = store
+                        .list_devices()
+                        .await
+                        .map_err(|e| ErrorShape::new(error_codes::INTERNAL, e.to_string()))?;
                     let list: Vec<_> = devices
                         .iter()
                         .map(|d| {

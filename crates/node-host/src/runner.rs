@@ -2,14 +2,16 @@
 
 use std::{process::Stdio, time::Duration};
 
-use futures::{SinkExt, StreamExt};
-use tokio::process::Command;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{debug, error, info, warn};
+use {
+    futures::{SinkExt, StreamExt},
+    tokio::process::Command,
+    tokio_tungstenite::{connect_async, tungstenite::Message},
+    tracing::{debug, error, info, warn},
+};
 
 use moltis_protocol::{
-    ConnectAuth, ConnectParamsV4, ClientInfo, GatewayFrame, ProtocolRange, RequestFrame,
-    ResponseFrame, PROTOCOL_VERSION, roles,
+    ClientInfo, ConnectAuth, ConnectParamsV4, GatewayFrame, PROTOCOL_VERSION, ProtocolRange,
+    RequestFrame, ResponseFrame, roles,
 };
 
 /// Configuration for connecting a node to a gateway.
@@ -130,7 +132,10 @@ impl NodeHost {
             Ok(Some(Ok(Message::Text(text)))) => {
                 let resp: ResponseFrame = serde_json::from_str(&text)?;
                 if resp.id != connect_id {
-                    anyhow::bail!("unexpected response id: expected {connect_id}, got {}", resp.id);
+                    anyhow::bail!(
+                        "unexpected response id: expected {connect_id}, got {}",
+                        resp.id
+                    );
                 }
                 if !resp.ok {
                     let err_msg = resp
@@ -148,7 +153,9 @@ impl NodeHost {
         };
 
         info!(
-            server_version = hello.payload.as_ref()
+            server_version = hello
+                .payload
+                .as_ref()
                 .and_then(|p| p.get("server"))
                 .and_then(|s| s.get("version"))
                 .and_then(|v| v.as_str())
@@ -245,7 +252,8 @@ impl NodeHost {
             Some(c) => c,
             None => {
                 warn!(invoke_id = %invoke_id, "invoke request missing command");
-                self.send_invoke_error(&invoke_id, "missing command", ws_tx).await;
+                self.send_invoke_error(&invoke_id, "missing command", ws_tx)
+                    .await;
                 return;
             },
         };
@@ -268,12 +276,16 @@ impl NodeHost {
                 self.send_invoke_result(&invoke_id, value, ws_tx).await;
             },
             Err(e) => {
-                self.send_invoke_error(&invoke_id, &e.to_string(), ws_tx).await;
+                self.send_invoke_error(&invoke_id, &e.to_string(), ws_tx)
+                    .await;
             },
         }
     }
 
-    async fn handle_system_run(&self, args: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn handle_system_run(
+        &self,
+        args: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
         let command = args
             .get("command")
             .and_then(|v| v.as_str())
@@ -332,16 +344,16 @@ impl NodeHost {
         }
     }
 
-    async fn handle_system_which(&self, args: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    async fn handle_system_which(
+        &self,
+        args: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
         let binary = args
             .get("binary")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("missing 'binary' in args"))?;
 
-        let output = Command::new("which")
-            .arg(binary)
-            .output()
-            .await?;
+        let output = Command::new("which").arg(binary).output().await?;
 
         let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let found = output.status.success();

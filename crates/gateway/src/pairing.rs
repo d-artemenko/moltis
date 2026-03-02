@@ -5,10 +5,12 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use sqlx::SqlitePool;
-use time::OffsetDateTime;
+use {
+    serde::{Deserialize, Serialize},
+    sha2::{Digest, Sha256},
+    sqlx::SqlitePool,
+    time::OffsetDateTime,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -167,33 +169,50 @@ impl PairingStore {
 
         Ok(rows
             .into_iter()
-            .map(|(id, device_id, display_name, platform, public_key, nonce, created_at, expires_at)| {
-                PairRequest {
+            .map(
+                |(
                     id,
                     device_id,
                     display_name,
                     platform,
                     public_key,
                     nonce,
-                    status: PairStatus::Pending,
                     created_at,
                     expires_at,
-                }
-            })
+                )| {
+                    PairRequest {
+                        id,
+                        device_id,
+                        display_name,
+                        platform,
+                        public_key,
+                        nonce,
+                        status: PairStatus::Pending,
+                        created_at,
+                        expires_at,
+                    }
+                },
+            )
             .collect())
     }
 
     /// Approve a pending pair request. Issues a device token.
     pub async fn approve(&self, pair_id: &str) -> Result<DeviceToken> {
         // Load and validate the request.
-        let row: Option<(String, Option<String>, String, Option<String>, String, String)> =
-            sqlx::query_as(
-                "SELECT device_id, display_name, platform, public_key, status, expires_at
+        let row: Option<(
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+            String,
+            String,
+        )> = sqlx::query_as(
+            "SELECT device_id, display_name, platform, public_key, status, expires_at
                  FROM pair_requests WHERE id = ?",
-            )
-            .bind(pair_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        )
+        .bind(pair_id)
+        .fetch_optional(&self.pool)
+        .await?;
 
         let (device_id, display_name, platform, public_key, status, expires_at) =
             row.ok_or(Error::PairRequestNotFound)?;
@@ -301,13 +320,15 @@ impl PairingStore {
 
         Ok(rows
             .into_iter()
-            .map(|(device_id, display_name, platform, public_key, created_at)| PairedDevice {
-                device_id,
-                display_name,
-                platform,
-                public_key,
-                created_at,
-            })
+            .map(
+                |(device_id, display_name, platform, public_key, created_at)| PairedDevice {
+                    device_id,
+                    display_name,
+                    platform,
+                    public_key,
+                    created_at,
+                },
+            )
             .collect())
     }
 
@@ -456,8 +477,7 @@ impl PairingStore {
                     return Ok(None);
                 }
 
-                let scopes =
-                    serde_json::from_str::<Vec<String>>(&scopes_json).unwrap_or_default();
+                let scopes = serde_json::from_str::<Vec<String>>(&scopes_json).unwrap_or_default();
                 Ok(Some(DeviceTokenVerification { device_id, scopes }))
             },
             None => Ok(None),
@@ -665,7 +685,9 @@ fn format_datetime(dt: OffsetDateTime) -> String {
 }
 
 fn is_expired(expires_at: &str) -> bool {
-    let Ok(expires) = OffsetDateTime::parse(expires_at, &time::format_description::well_known::Rfc3339) else {
+    let Ok(expires) =
+        OffsetDateTime::parse(expires_at, &time::format_description::well_known::Rfc3339)
+    else {
         // If we can't parse, try SQLite datetime format.
         return is_expired_sqlite(expires_at);
     };

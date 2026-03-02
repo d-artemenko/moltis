@@ -230,10 +230,7 @@ pub async fn handle_connection(
 
     // Device-token-authenticated connections default to "node" role.
     let role = if device_token_device_id.is_some() {
-        params
-            .role
-            .clone()
-            .unwrap_or_else(|| roles::NODE.into())
+        params.role.clone().unwrap_or_else(|| roles::NODE.into())
     } else {
         params
             .role
