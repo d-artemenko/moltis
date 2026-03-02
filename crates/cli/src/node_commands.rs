@@ -1,9 +1,12 @@
 use {anyhow::Result, clap::Subcommand, std::time::Duration};
 
-/// `moltis node` subcommands — run or manage a headless node.
+/// `moltis node` subcommands — run a headless node on this machine.
 #[derive(Subcommand)]
 pub enum NodeAction {
-    /// Connect to a gateway as a headless node and handle remote commands.
+    /// Connect to a gateway as a headless node (foreground).
+    ///
+    /// Runs the node process in the current terminal session.
+    /// Use `moltis node install` to run it as a background service instead.
     Run {
         /// Gateway WebSocket URL (e.g. ws://localhost:9090/ws).
         #[arg(long, env = "MOLTIS_GATEWAY_URL")]
@@ -25,7 +28,10 @@ pub enum NodeAction {
         timeout: u64,
     },
 
-    /// Install the node as an OS service (launchd on macOS, systemd on Linux).
+    /// Install the node as a background OS service (launchd on macOS, systemd on Linux).
+    ///
+    /// Saves connection parameters and registers a service that starts on boot
+    /// and restarts on failure.
     Install {
         /// Gateway WebSocket URL (e.g. ws://localhost:9090/ws).
         #[arg(long, env = "MOLTIS_GATEWAY_URL")]
@@ -47,17 +53,8 @@ pub enum NodeAction {
         timeout: u64,
     },
 
-    /// Uninstall the node service and remove its configuration.
+    /// Uninstall the node background service and remove its saved configuration.
     Uninstall,
-
-    /// Show the current status of the node service.
-    Status,
-
-    /// Stop the node service.
-    Stop,
-
-    /// Restart the node service.
-    Restart,
 
     /// Print the path to the node service log file.
     Logs,
@@ -120,24 +117,6 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
             let data_dir = moltis_config::data_dir();
             moltis_node_host::service::uninstall(&data_dir)?;
             println!("Node service uninstalled.");
-            Ok(())
-        },
-
-        NodeAction::Status => {
-            let status = moltis_node_host::service::status()?;
-            println!("Node service: {status}");
-            Ok(())
-        },
-
-        NodeAction::Stop => {
-            moltis_node_host::service::stop()?;
-            println!("Node service stopped.");
-            Ok(())
-        },
-
-        NodeAction::Restart => {
-            moltis_node_host::service::restart()?;
-            println!("Node service restarted.");
             Ok(())
         },
 
