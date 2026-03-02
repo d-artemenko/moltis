@@ -451,9 +451,7 @@ impl NodeHost {
                 .and_then(|v| v.as_array())
                 .map(|arr| {
                     arr.iter()
-                        .filter_map(|m| {
-                            m.get("name").and_then(|n| n.as_str()).map(String::from)
-                        })
+                        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
                         .collect()
                 })
                 .unwrap_or_default();

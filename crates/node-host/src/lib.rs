@@ -7,5 +7,9 @@
 //! by executing them locally.
 
 pub mod runner;
+pub mod service;
 
-pub use runner::{NodeConfig, NodeHost};
+pub use {
+    runner::{NodeConfig, NodeHost},
+    service::ServiceConfig,
+};
