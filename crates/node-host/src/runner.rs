@@ -45,12 +45,74 @@ impl Default for NodeConfig {
             node_id: uuid::Uuid::new_v4().to_string(),
             display_name: None,
             platform: std::env::consts::OS.into(),
-            caps: vec!["system.run".into(), "system.which".into()],
-            commands: vec!["system.run".into(), "system.which".into()],
+            caps: vec![
+                "system.run".into(),
+                "system.which".into(),
+                "system.providers".into(),
+            ],
+            commands: vec![
+                "system.run".into(),
+                "system.which".into(),
+                "system.providers".into(),
+            ],
             exec_timeout: Duration::from_secs(300),
             working_dir: None,
         }
     }
+}
+
+/// Detect installed runtimes using `which`.
+fn detect_runtimes() -> Vec<String> {
+    let candidates = ["python3", "python", "node", "ruby", "go", "rustc", "java"];
+    let mut found = Vec::new();
+    for name in candidates {
+        // Skip "python" if we already found "python3".
+        if name == "python" && found.contains(&"python3".to_string()) {
+            continue;
+        }
+        if which::which(name).is_ok() {
+            found.push(name.to_string());
+        }
+    }
+    found
+}
+
+/// Collect system telemetry using `sysinfo`.
+fn collect_system_telemetry(node_id: &str) -> serde_json::Value {
+    use sysinfo::{Disks, System};
+
+    let mut sys = System::new();
+    sys.refresh_memory();
+    sys.refresh_cpu_all();
+
+    let uptime = System::uptime();
+
+    // Disk: find the root partition.
+    let disks = Disks::new_with_refreshed_list();
+    let root_disk = disks
+        .iter()
+        .find(|d| d.mount_point() == std::path::Path::new("/"));
+    let disk_total = root_disk.map(|d| d.total_space());
+    let disk_available = root_disk.map(|d| d.available_space());
+
+    let runtimes = detect_runtimes();
+
+    serde_json::json!({
+        "nodeId": node_id,
+        "mem": {
+            "total": sys.total_memory(),
+            "available": sys.available_memory(),
+        },
+        "cpuCount": sys.cpus().len(),
+        "cpuUsage": sys.global_cpu_usage(),
+        "uptime": uptime,
+        "services": [],
+        "disk": {
+            "total": disk_total,
+            "available": disk_available,
+        },
+        "runtimes": runtimes,
+    })
 }
 
 /// A headless node host that connects to a gateway and handles commands.
@@ -163,7 +225,11 @@ impl NodeHost {
             "handshake complete, node registered"
         );
 
-        // Main message loop.
+        // Main message loop with telemetry ticker.
+        let mut telemetry_interval = tokio::time::interval(Duration::from_secs(30));
+        // Skip the immediate first tick — send telemetry after the first interval.
+        telemetry_interval.tick().await;
+
         loop {
             tokio::select! {
                 msg = ws_rx.next() => {
@@ -191,6 +257,9 @@ impl NodeHost {
                             break;
                         },
                     }
+                },
+                _ = telemetry_interval.tick() => {
+                    self.send_telemetry(&mut ws_tx).await;
                 },
             }
         }
@@ -265,6 +334,7 @@ impl NodeHost {
         let result = match command {
             "system.run" => self.handle_system_run(&args).await,
             "system.which" => self.handle_system_which(&args).await,
+            "system.providers" => self.handle_system_providers().await,
             other => {
                 warn!(command = %other, "unsupported invoke command");
                 Err(anyhow::anyhow!("unsupported command: {other}"))
@@ -364,6 +434,56 @@ impl NodeHost {
         }))
     }
 
+    async fn handle_system_providers(&self) -> anyhow::Result<serde_json::Value> {
+        let mut providers = Vec::new();
+
+        // Check Ollama at localhost:11434.
+        if let Ok(resp) = reqwest::Client::new()
+            .get("http://localhost:11434/api/tags")
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await
+            && resp.status().is_success()
+            && let Ok(body) = resp.json::<serde_json::Value>().await
+        {
+            let models: Vec<String> = body
+                .get("models")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| {
+                            m.get("name").and_then(|n| n.as_str()).map(String::from)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            providers.push(serde_json::json!({
+                "provider": "ollama",
+                "models": models,
+            }));
+        }
+
+        // Check for known API key env vars (presence only, never the values).
+        let api_key_checks = [
+            ("OPENAI_API_KEY", "openai"),
+            ("ANTHROPIC_API_KEY", "anthropic"),
+            ("GOOGLE_API_KEY", "google"),
+            ("MISTRAL_API_KEY", "mistral"),
+            ("GROQ_API_KEY", "groq"),
+            ("TOGETHER_API_KEY", "together"),
+        ];
+        for (env_var, provider_name) in api_key_checks {
+            if std::env::var(env_var).is_ok_and(|v| !v.is_empty()) {
+                providers.push(serde_json::json!({
+                    "provider": provider_name,
+                    "models": [],
+                }));
+            }
+        }
+
+        Ok(serde_json::json!({ "providers": providers }))
+    }
+
     async fn send_invoke_result(
         &self,
         invoke_id: &str,
@@ -384,6 +504,28 @@ impl NodeHost {
             && let Err(e) = ws_tx.send(Message::Text(json.into())).await
         {
             warn!(invoke_id = %invoke_id, error = %e, "failed to send invoke result");
+        }
+    }
+
+    async fn send_telemetry(
+        &self,
+        ws_tx: &mut (impl SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin),
+    ) {
+        let telemetry = collect_system_telemetry(&self.config.node_id);
+        let frame = serde_json::json!({
+            "type": "req",
+            "id": uuid::Uuid::new_v4().to_string(),
+            "method": "node.event",
+            "params": {
+                "event": "node.telemetry",
+                "payload": telemetry,
+            }
+        });
+
+        if let Ok(json) = serde_json::to_string(&frame)
+            && let Err(e) = ws_tx.send(Message::Text(json.into())).await
+        {
+            debug!(error = %e, "failed to send telemetry");
         }
     }
 

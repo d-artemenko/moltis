@@ -1229,8 +1229,10 @@ pub async fn prepare_gateway(
     };
 
     // Discover LLM providers from env + config + saved keys.
+    // Use deferred mode (no network calls) for instant startup; a background
+    // task will backfill live model catalogs shortly after.
     let registry = Arc::new(tokio::sync::RwLock::new(
-        ProviderRegistry::from_env_with_config_and_overrides(
+        ProviderRegistry::from_env_with_config_and_overrides_deferred(
             &effective_providers,
             &config_env_overrides,
         ),
@@ -1274,14 +1276,39 @@ pub async fn prepare_gateway(
         }
     }
 
-    // Refresh dynamic provider model discovery hourly so long-lived sessions
-    // pick up newly available models without requiring a restart.
+    // Background provider model refresh: run an immediate full refresh (to
+    // backfill the deferred startup with live catalogs), then refresh dynamic
+    // sources hourly so long-lived sessions pick up newly available models.
     {
         let registry_for_refresh = Arc::clone(&registry);
         let provider_config_for_refresh = base_provider_config.clone();
+        let env_overrides_for_refresh = config_env_overrides.clone();
         tokio::spawn(async move {
+            // Immediate full refresh — backfill live models that were skipped
+            // during deferred startup.  Runs in spawn_blocking because the
+            // underlying fetches use sync HTTP (fetch_models_blocking).
+            {
+                let reg = Arc::clone(&registry_for_refresh);
+                let cfg = provider_config_for_refresh.clone();
+                let env = env_overrides_for_refresh.clone();
+                if let Err(e) = tokio::task::spawn_blocking(move || {
+                    let mut guard = reg.blocking_write();
+                    guard.refresh_all_provider_models(&cfg, &env);
+                })
+                .await
+                {
+                    warn!(error = %e, "background provider model refresh panicked");
+                }
+                let reg = registry_for_refresh.read().await;
+                info!(
+                    models = reg.list_models().len(),
+                    "background provider model refresh complete"
+                );
+            }
+
+            // Then refresh dynamic sources (codex, copilot) hourly.
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
-            interval.tick().await;
+            interval.tick().await; // skip immediate tick (just did a full refresh)
             loop {
                 interval.tick().await;
                 let mut reg = registry_for_refresh.write().await;
@@ -2440,11 +2467,13 @@ pub async fn prepare_gateway(
                 .await;
         }
 
-        // Generic config startup loop — one loop for all channel types.
-        let mut started: HashSet<(String, String)> = HashSet::new();
+        // Collect all channel accounts to start (config + stored), then
+        // spawn them concurrently so slow network calls (e.g. Telegram)
+        // don't block startup sequentially.
+        let mut pending_starts: Vec<(String, String, serde_json::Value)> = Vec::new();
+        let mut queued: HashSet<(String, String)> = HashSet::new();
 
         for (channel_type, accounts) in config.channels.all_channel_configs() {
-            // Skip channel types that have no registered plugin.
             if registry.get(channel_type).is_none() {
                 if !accounts.is_empty() {
                     tracing::debug!(
@@ -2455,28 +2484,24 @@ pub async fn prepare_gateway(
                 continue;
             }
             for (account_id, account_config) in accounts {
-                if let Err(e) = registry
-                    .start_account(channel_type, account_id, account_config.clone())
-                    .await
-                {
-                    tracing::warn!(
-                        account_id,
-                        channel_type,
-                        "failed to start channel account: {e}"
-                    );
-                } else {
-                    started.insert((channel_type.to_string(), account_id.clone()));
+                let key = (channel_type.to_string(), account_id.clone());
+                if queued.insert(key) {
+                    pending_starts.push((
+                        channel_type.to_string(),
+                        account_id.clone(),
+                        account_config.clone(),
+                    ));
                 }
             }
         }
 
-        // Load persisted channels that were not started from config.
+        // Load persisted channels that were not queued from config.
         match channel_store.list().await {
             Ok(stored) => {
                 info!("{} stored channel(s) found in database", stored.len());
                 for ch in stored {
                     let key = (ch.channel_type.clone(), ch.account_id.clone());
-                    if started.contains(&key) {
+                    if queued.contains(&key) {
                         info!(
                             account_id = ch.account_id,
                             channel_type = ch.channel_type,
@@ -2484,8 +2509,6 @@ pub async fn prepare_gateway(
                         );
                         continue;
                     }
-
-                    // Only start if the channel type is registered.
                     if registry.get(&ch.channel_type).is_none() {
                         tracing::warn!(
                             account_id = ch.account_id,
@@ -2494,34 +2517,43 @@ pub async fn prepare_gateway(
                         );
                         continue;
                     }
-
                     info!(
                         account_id = ch.account_id,
                         channel_type = ch.channel_type,
                         "starting stored channel"
                     );
-                    if let Err(e) = registry
-                        .start_account(&ch.channel_type, &ch.account_id, ch.config)
-                        .await
-                    {
-                        tracing::warn!(
-                            account_id = ch.account_id,
-                            channel_type = ch.channel_type,
-                            "failed to start stored channel account: {e}"
-                        );
-                    } else {
-                        started.insert(key);
+                    if queued.insert(key) {
+                        pending_starts.push((ch.channel_type, ch.account_id, ch.config));
                     }
                 }
             },
             Err(e) => tracing::warn!("failed to load stored channels: {e}"),
         }
 
-        if !started.is_empty() {
-            info!("{} channel account(s) started", started.len());
-        }
-
         let registry = Arc::new(registry);
+
+        // Spawn all channel starts concurrently.
+        if !pending_starts.is_empty() {
+            let total = pending_starts.len();
+            info!("{total} channel account(s) queued for startup");
+            for (channel_type, account_id, account_config) in pending_starts {
+                let reg = Arc::clone(&registry);
+                tokio::spawn(async move {
+                    if let Err(e) = reg
+                        .start_account(&channel_type, &account_id, account_config)
+                        .await
+                    {
+                        tracing::warn!(
+                            account_id,
+                            channel_type,
+                            "failed to start channel account: {e}"
+                        );
+                    } else {
+                        info!(account_id, channel_type, "channel account started");
+                    }
+                });
+            }
+        }
         let router = Arc::new(RegistryOutboundRouter::new(Arc::clone(&registry)));
 
         services = services.with_channel_registry(Arc::clone(&registry));
@@ -3110,12 +3142,19 @@ pub async fn prepare_gateway(
             .with_env_provider(Arc::clone(&env_provider))
             .with_completion_callback(exec_cb);
 
-        // When tools.exec.host = "node", route commands to a remote node.
-        if config.tools.exec.host == "node" {
+        // Always attach the node exec provider so the LLM can target nodes
+        // via the `node` parameter. When tools.exec.host = "node", also set
+        // the default node so commands route there without an explicit param.
+        {
             let provider = Arc::new(crate::node_exec::GatewayNodeExecProvider::new(Arc::clone(
                 &state,
             )));
-            exec_tool = exec_tool.with_node_provider(provider, config.tools.exec.node.clone());
+            let default_node = if config.tools.exec.host == "node" {
+                config.tools.exec.node.clone()
+            } else {
+                None
+            };
+            exec_tool = exec_tool.with_node_provider(provider, default_node);
         }
 
         let cron_tool = moltis_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
@@ -3214,6 +3253,22 @@ pub async fn prepare_gateway(
             )));
             tool_registry.register(Box::new(moltis_memory::tools::MemorySaveTool::new(
                 Arc::clone(mm),
+            )));
+        }
+
+        // Register node info tools (list, describe, select).
+        {
+            let node_info_provider: Arc<dyn moltis_tools::nodes::NodeInfoProvider> = Arc::new(
+                crate::node_exec::GatewayNodeInfoProvider::new(Arc::clone(&state)),
+            );
+            tool_registry.register(Box::new(moltis_tools::nodes::NodesListTool::new(
+                Arc::clone(&node_info_provider),
+            )));
+            tool_registry.register(Box::new(moltis_tools::nodes::NodesDescribeTool::new(
+                Arc::clone(&node_info_provider),
+            )));
+            tool_registry.register(Box::new(moltis_tools::nodes::NodesSelectTool::new(
+                Arc::clone(&node_info_provider),
             )));
         }
 

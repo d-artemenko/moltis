@@ -41,6 +41,7 @@ import {
 	upsertSessionHistoryMessage,
 } from "./stores/session-history-cache.js";
 import { sessionStore } from "./stores/session-store.js";
+import { restoreNodeSelection } from "./nodes-selector.js";
 import { confirmDialog } from "./ui.js";
 
 var SESSION_PREVIEW_MAX_CHARS = 200;
@@ -380,6 +381,7 @@ function restoreSessionState(entry, projectId) {
 	S.setSessionExecPromptSymbol(effectiveSandboxRoute || S.hostExecIsRoot ? "#" : "$");
 	updateCommandInputUI();
 	restoreMcpToggle(!entry.mcpDisabled);
+	restoreNodeSelection(entry.node_id || null);
 	updateChatSessionHeader();
 }
 

@@ -484,6 +484,57 @@ impl PairingStore {
         }
     }
 
+    /// Create a pre-authorized device and issue a token directly (no pairing handshake).
+    pub async fn create_device_token(
+        &self,
+        display_name: Option<&str>,
+        platform: &str,
+    ) -> Result<DeviceToken> {
+        let device_id = uuid::Uuid::new_v4().to_string();
+
+        // Insert as an active paired device.
+        sqlx::query(
+            "INSERT INTO paired_devices (device_id, display_name, platform, public_key, status)
+             VALUES (?, ?, ?, NULL, 'active')",
+        )
+        .bind(&device_id)
+        .bind(display_name)
+        .bind(platform)
+        .execute(&self.pool)
+        .await?;
+
+        // Issue a device token.
+        let raw_token = format!("mdt_{}", generate_token());
+        let token_hash = sha256_hex(&raw_token);
+        let token_prefix = &raw_token[..raw_token.len().min(12)];
+        let scopes = vec![
+            "operator.read".to_string(),
+            "operator.write".to_string(),
+            "operator.approvals".to_string(),
+        ];
+        let scopes_json = serde_json::to_string(&scopes).unwrap_or_default();
+        let issued_at_ms = current_epoch_ms();
+
+        sqlx::query(
+            "INSERT INTO device_tokens (token_hash, token_prefix, device_id, scopes, issued_at)
+             VALUES (?, ?, ?, ?, datetime('now'))",
+        )
+        .bind(&token_hash)
+        .bind(token_prefix)
+        .bind(&device_id)
+        .bind(&scopes_json)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(DeviceToken {
+            token: raw_token,
+            device_id,
+            scopes,
+            issued_at_ms,
+            revoked: false,
+        })
+    }
+
     /// Evict expired pending requests.
     pub async fn evict_expired(&self) -> Result<u64> {
         let result = sqlx::query(
@@ -647,6 +698,30 @@ impl PairingState {
             .ok_or(Error::DeviceNotFound)?;
         existing.revoked = true;
         Ok(())
+    }
+
+    /// Create a pre-authorized device and issue a token directly (no pairing handshake).
+    pub fn create_device_token(
+        &mut self,
+        display_name: Option<&str>,
+        platform: &str,
+    ) -> DeviceToken {
+        let device_id = uuid::Uuid::new_v4().to_string();
+        let _ = display_name;
+        let _ = platform;
+        let token = DeviceToken {
+            token: uuid::Uuid::new_v4().to_string(),
+            device_id: device_id.clone(),
+            scopes: vec![
+                "operator.read".into(),
+                "operator.write".into(),
+                "operator.approvals".into(),
+            ],
+            issued_at_ms: current_epoch_ms(),
+            revoked: false,
+        };
+        self.devices.insert(device_id, token.clone());
+        token
     }
 
     pub fn evict_expired(&mut self) {
@@ -822,6 +897,38 @@ mod tests {
 
         let result = store.verify_device_token("invalid_token").await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn create_device_token_directly() {
+        let pool = test_pool().await;
+        let store = PairingStore::new(pool);
+
+        // Create a device token without the pairing handshake.
+        let token = store
+            .create_device_token(Some("My Server"), "linux")
+            .await
+            .unwrap();
+        assert!(token.token.starts_with("mdt_"));
+        assert!(!token.scopes.is_empty());
+
+        // Device should be listed.
+        let devices = store.list_devices().await.unwrap();
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].device_id, token.device_id);
+        assert_eq!(devices[0].display_name.as_deref(), Some("My Server"));
+        assert_eq!(devices[0].platform, "linux");
+
+        // Token should verify.
+        let verification = store.verify_device_token(&token.token).await.unwrap();
+        assert!(verification.is_some());
+        let v = verification.unwrap();
+        assert_eq!(v.device_id, token.device_id);
+
+        // Can revoke it.
+        store.revoke_token(&token.device_id).await.unwrap();
+        let revoked_verify = store.verify_device_token(&token.token).await.unwrap();
+        assert!(revoked_verify.is_none());
     }
 
     #[tokio::test]

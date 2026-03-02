@@ -350,6 +350,45 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
+    // device.token.create — pre-authorize a device and issue a token directly
+    reg.register(
+        "device.token.create",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let display_name = ctx.params.get("displayName").and_then(|v| v.as_str());
+                let platform = ctx
+                    .params
+                    .get("platform")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("remote");
+
+                let (token_str, device_id, scopes) =
+                    if let Some(store) = get_pairing_store(&ctx.state) {
+                        let token = store
+                            .create_device_token(display_name, platform)
+                            .await
+                            .map_err(|e| ErrorShape::new(error_codes::INTERNAL, e.to_string()))?;
+                        (token.token, token.device_id, token.scopes)
+                    } else {
+                        let token = ctx
+                            .state
+                            .inner
+                            .write()
+                            .await
+                            .pairing
+                            .create_device_token(display_name, platform);
+                        (token.token, token.device_id, token.scopes)
+                    };
+
+                Ok(serde_json::json!({
+                    "deviceToken": token_str,
+                    "deviceId": device_id,
+                    "scopes": scopes,
+                }))
+            })
+        }),
+    );
+
     // device.token.rotate
     reg.register(
         "device.token.rotate",

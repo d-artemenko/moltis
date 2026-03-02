@@ -6319,13 +6319,16 @@ dependencies = [
  "futures",
  "moltis-metrics",
  "moltis-protocol",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sysinfo",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "tracing",
  "url",
  "uuid",
+ "which 8.0.0",
 ]
 
 [[package]]

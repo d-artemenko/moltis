@@ -114,6 +114,12 @@ var sections = [
 		page: true,
 	},
 	{
+		id: "nodes",
+		label: "Nodes",
+		icon: html`<span class="icon icon-nodes"></span>`,
+		page: true,
+	},
+	{
 		id: "environment",
 		label: "Environment",
 		icon: html`<span class="icon icon-terminal"></span>`,
@@ -154,12 +160,12 @@ var sections = [
 	{
 		id: "tailscale",
 		label: "Tailscale",
-		icon: html`<span class="icon icon-globe"></span>`,
+		icon: html`<span class="icon icon-tailscale"></span>`,
 	},
 	{
 		id: "network-audit",
 		label: "Network Audit",
-		icon: html`<span class="icon icon-globe"></span>`,
+		icon: html`<span class="icon icon-shield-check"></span>`,
 		page: true,
 	},
 	{
@@ -194,12 +200,6 @@ var sections = [
 		page: true,
 	},
 	{
-		id: "nodes",
-		label: "Nodes",
-		icon: html`<span class="icon icon-globe"></span>`,
-		page: true,
-	},
-	{
 		id: "skills",
 		label: "Skills",
 		icon: html`<span class="icon icon-sparkles"></span>`,
@@ -208,7 +208,7 @@ var sections = [
 	{
 		id: "import",
 		label: "OpenClaw Import",
-		icon: html`<span class="icon icon-link"></span>`,
+		icon: html`<span class="icon icon-openclaw"></span>`,
 	},
 	{
 		id: "voice",

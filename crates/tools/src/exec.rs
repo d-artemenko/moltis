@@ -284,26 +284,44 @@ impl AgentTool for ExecTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command on the server. Returns stdout, stderr, and exit code."
+        if self.node_provider.is_some() {
+            "Execute a shell command on the server or a remote node. Returns stdout, stderr, and exit code."
+        } else {
+            "Execute a shell command on the server. Returns stdout, stderr, and exit code."
+        }
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
+        let mut properties = serde_json::json!({
+            "command": {
+                "type": "string",
+                "description": "The shell command to execute"
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Timeout in seconds (default 30, max 1800)"
+            },
+            "working_dir": {
+                "type": "string",
+                "description": "Working directory for the command"
+            }
+        });
+
+        if self.node_provider.is_some()
+            && let Some(obj) = properties.as_object_mut()
+        {
+            obj.insert(
+                "node".to_string(),
+                serde_json::json!({
+                    "type": "string",
+                    "description": "Node name or ID to run on. Omit to use the session's default node."
+                }),
+            );
+        }
+
         serde_json::json!({
             "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The shell command to execute"
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "Timeout in seconds (default 30, max 1800)"
-                },
-                "working_dir": {
-                    "type": "string",
-                    "description": "Working directory for the command"
-                }
-            },
+            "properties": properties,
             "required": ["command"]
         })
     }
@@ -326,19 +344,14 @@ impl AgentTool for ExecTool {
             .min(1800); // cap at 30 minutes
 
         // Node execution: forward to a remote node if configured.
-        if let Some(ref provider) = self.node_provider {
-            let node_ref = params
-                .get("node")
-                .and_then(|v| v.as_str())
-                .map(String::from)
-                .or_else(|| self.default_node.clone())
-                .ok_or_else(|| {
-                    Error::message(
-                        "tools.exec.host is 'node' but no node specified \
-                         (set tools.exec.node or pass 'node' parameter)",
-                    )
-                })?;
-
+        // When a node is explicitly requested via param or a default is set, route
+        // to that node. Otherwise fall through to local/sandbox execution.
+        let node_ref = params
+            .get("node")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| self.default_node.clone());
+        if let (Some(provider), Some(node_ref)) = (&self.node_provider, node_ref) {
             let node_id = provider.resolve_node_id(&node_ref).await.ok_or_else(|| {
                 Error::message(format!("node '{node_ref}' not found or not connected"))
             })?;

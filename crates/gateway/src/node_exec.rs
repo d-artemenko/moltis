@@ -138,6 +138,92 @@ pub async fn exec_on_node(
     parse_exec_result(&result)
 }
 
+/// Query a node for its available LLM providers via `system.providers`.
+pub async fn query_node_providers(
+    state: &Arc<GatewayState>,
+    node_id: &str,
+) -> anyhow::Result<Vec<crate::nodes::NodeProviderEntry>> {
+    // Find the node's conn_id.
+    let conn_id = {
+        let inner = state.inner.read().await;
+        let node = inner
+            .nodes
+            .get(node_id)
+            .ok_or_else(|| anyhow::anyhow!("node '{node_id}' not connected"))?;
+        node.conn_id.clone()
+    };
+
+    let invoke_id = uuid::Uuid::new_v4().to_string();
+    let invoke_event = moltis_protocol::EventFrame::new(
+        "node.invoke.request",
+        serde_json::json!({
+            "invokeId": invoke_id,
+            "command": "system.providers",
+            "args": {},
+        }),
+        state.next_seq(),
+    );
+    let event_json = serde_json::to_string(&invoke_event)?;
+
+    {
+        let inner = state.inner.read().await;
+        let node_client = inner
+            .clients
+            .get(&conn_id)
+            .ok_or_else(|| anyhow::anyhow!("node connection lost"))?;
+        if !node_client.send(&event_json) {
+            anyhow::bail!("failed to send providers invoke to node");
+        }
+    }
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut inner = state.inner.write().await;
+        inner
+            .pending_invokes
+            .insert(invoke_id.clone(), crate::state::PendingInvoke {
+                request_id: invoke_id.clone(),
+                sender: tx,
+                created_at: std::time::Instant::now(),
+            });
+    }
+
+    let result = match tokio::time::timeout(Duration::from_secs(10), rx).await {
+        Ok(Ok(value)) => value,
+        Ok(Err(_)) => anyhow::bail!("providers invoke cancelled"),
+        Err(_) => {
+            state.inner.write().await.pending_invokes.remove(&invoke_id);
+            anyhow::bail!("providers invoke timeout");
+        },
+    };
+
+    // Parse the result.
+    let providers_arr = result
+        .get("providers")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let entries = providers_arr
+        .into_iter()
+        .filter_map(|p| {
+            let provider = p.get("provider")?.as_str()?.to_string();
+            let models = p
+                .get("models")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(crate::nodes::NodeProviderEntry { provider, models })
+        })
+        .collect();
+
+    Ok(entries)
+}
+
 /// Resolve a node identifier (id or display name) to a node_id.
 pub async fn resolve_node_id(state: &Arc<GatewayState>, node_ref: &str) -> Option<String> {
     let inner = state.inner.read().await;
@@ -247,6 +333,98 @@ impl moltis_tools::exec::NodeExecProvider for GatewayNodeExecProvider {
             stderr: result.stderr,
             exit_code: result.exit_code,
         })
+    }
+
+    async fn resolve_node_id(&self, node_ref: &str) -> Option<String> {
+        resolve_node_id(&self.state, node_ref).await
+    }
+}
+
+// ── Node info provider ──────────────────────────────────────────────────────
+
+/// Convert a `NodeSession` into a serializable `NodeInfo`.
+fn node_to_info(n: &crate::nodes::NodeSession) -> moltis_tools::nodes::NodeInfo {
+    moltis_tools::nodes::NodeInfo {
+        node_id: n.node_id.clone(),
+        display_name: n.display_name.clone(),
+        platform: n.platform.clone(),
+        capabilities: n.capabilities.clone(),
+        commands: n.commands.clone(),
+        remote_ip: n.remote_ip.clone(),
+        mem_total: n.mem_total,
+        mem_available: n.mem_available,
+        cpu_count: n.cpu_count,
+        cpu_usage: n.cpu_usage,
+        uptime_secs: n.uptime_secs,
+        services: n.services.clone(),
+        telemetry_stale: n
+            .last_telemetry
+            .is_some_and(|t| t.elapsed() > Duration::from_secs(120)),
+        disk_total: n.disk_total,
+        disk_available: n.disk_available,
+        runtimes: n.runtimes.clone(),
+        providers: n
+            .providers
+            .iter()
+            .map(|p| moltis_tools::nodes::NodeProviderInfo {
+                provider: p.provider.clone(),
+                models: p.models.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Bridge that implements [`moltis_tools::nodes::NodeInfoProvider`] by
+/// reading from the `NodeRegistry` and session metadata in `GatewayState`.
+pub struct GatewayNodeInfoProvider {
+    state: Arc<GatewayState>,
+}
+
+impl GatewayNodeInfoProvider {
+    pub fn new(state: Arc<GatewayState>) -> Self {
+        Self { state }
+    }
+}
+
+#[async_trait]
+impl moltis_tools::nodes::NodeInfoProvider for GatewayNodeInfoProvider {
+    async fn list_nodes(&self) -> Vec<moltis_tools::nodes::NodeInfo> {
+        let inner = self.state.inner.read().await;
+        inner.nodes.list().iter().map(|n| node_to_info(n)).collect()
+    }
+
+    async fn describe_node(&self, node_ref: &str) -> Option<moltis_tools::nodes::NodeInfo> {
+        let resolved = resolve_node_id(&self.state, node_ref).await?;
+        let inner = self.state.inner.read().await;
+        inner.nodes.get(&resolved).map(node_to_info)
+    }
+
+    async fn set_session_node(
+        &self,
+        session_key: &str,
+        node_ref: Option<&str>,
+    ) -> anyhow::Result<Option<String>> {
+        let resolved = match node_ref {
+            Some(r) => {
+                let id = resolve_node_id(&self.state, r)
+                    .await
+                    .ok_or_else(|| anyhow::anyhow!("node '{r}' not found or not connected"))?;
+                Some(id)
+            },
+            None => None,
+        };
+
+        let meta = self
+            .state
+            .services
+            .session_metadata
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("session metadata not available"))?;
+
+        meta.upsert(session_key, None).await?;
+        meta.set_node_id(session_key, resolved.as_deref()).await?;
+
+        Ok(resolved)
     }
 
     async fn resolve_node_id(&self, node_ref: &str) -> Option<String> {

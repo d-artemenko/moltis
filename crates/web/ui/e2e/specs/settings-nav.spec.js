@@ -307,6 +307,7 @@ test.describe("Settings navigation", () => {
 		const expectedPrefix = [
 			"Identity",
 			"Agents",
+			"Nodes",
 			"Environment",
 			"Memory",
 			"Notifications",
@@ -315,7 +316,7 @@ test.describe("Settings navigation", () => {
 			"Authentication",
 		];
 		if (navItems.includes("Encryption")) expectedPrefix.push("Encryption");
-		expectedPrefix.push("Tailscale", "Network Audit", "Sandboxes", "Channels", "Hooks", "LLMs", "MCP", "Nodes", "Skills");
+		expectedPrefix.push("Tailscale", "Network Audit", "Sandboxes", "Channels", "Hooks", "LLMs", "MCP", "Skills");
 		const expectedSystem = ["Terminal", "Monitoring", "Logs"];
 		const expected = [...expectedPrefix];
 		if (navItems.includes("OpenClaw Import")) expected.push("OpenClaw Import");

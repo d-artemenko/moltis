@@ -399,6 +399,17 @@ pub async fn handle_connection(
             path_env: params.path_env.clone(),
             remote_ip: Some(conn_remote_ip.clone()),
             connected_at: now,
+            mem_total: None,
+            mem_available: None,
+            cpu_count: None,
+            cpu_usage: None,
+            uptime_secs: None,
+            services: Vec::new(),
+            last_telemetry: None,
+            disk_total: None,
+            disk_available: None,
+            runtimes: Vec::new(),
+            providers: Vec::new(),
         };
         state.inner.write().await.nodes.register(node);
         info!(conn_id = %conn_id, node_id = %params.client.id, "node registered");
@@ -415,6 +426,29 @@ pub async fn handle_connection(
             BroadcastOpts::default(),
         )
         .await;
+
+        // Query provider discovery in the background (best-effort).
+        if params
+            .commands
+            .as_ref()
+            .is_some_and(|cmds| cmds.iter().any(|c| c == "system.providers"))
+        {
+            let prov_state = Arc::clone(&state);
+            let prov_node_id = params.client.id.clone();
+            tokio::spawn(async move {
+                match crate::node_exec::query_node_providers(&prov_state, &prov_node_id).await {
+                    Ok(providers) => {
+                        let mut inner = prov_state.inner.write().await;
+                        if let Some(n) = inner.nodes.get_mut(&prov_node_id) {
+                            n.providers = providers;
+                        }
+                    },
+                    Err(e) => {
+                        debug!(node_id = %prov_node_id, error = %e, "provider discovery failed")
+                    },
+                }
+            });
+        }
     }
 
     // ── Message loop ─────────────────────────────────────────────────────

@@ -256,7 +256,7 @@ async fn fetch_valid_copilot_token_with_fallback(
     fetch_valid_copilot_token(client, &token_store).await
 }
 
-fn default_model_catalog() -> Vec<super::DiscoveredModel> {
+pub(crate) fn default_model_catalog() -> Vec<super::DiscoveredModel> {
     COPILOT_MODELS
         .iter()
         .map(|(id, name)| super::DiscoveredModel::new(*id, *name))

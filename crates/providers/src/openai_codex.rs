@@ -362,7 +362,7 @@ pub fn has_stored_tokens() -> bool {
     TokenStore::new().load("openai-codex").is_some() || load_codex_cli_tokens().is_some()
 }
 
-fn default_model_catalog() -> Vec<super::DiscoveredModel> {
+pub(crate) fn default_model_catalog() -> Vec<super::DiscoveredModel> {
     DEFAULT_CODEX_MODELS
         .iter()
         .map(|(id, name)| super::DiscoveredModel::new(*id, *name))
