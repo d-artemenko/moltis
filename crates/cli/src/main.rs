@@ -19,6 +19,7 @@ mod memory_commands;
 mod node_commands;
 mod nodes_commands;
 mod sandbox_commands;
+mod service_commands;
 #[cfg(feature = "tailscale")]
 mod tailscale_commands;
 
@@ -149,6 +150,11 @@ enum Commands {
     Node {
         #[command(subcommand)]
         action: node_commands::NodeAction,
+    },
+    /// Install or manage moltis as an OS service.
+    Service {
+        #[command(subcommand)]
+        action: service_commands::ServiceAction,
     },
     /// View connected nodes on a gateway.
     Nodes {
@@ -426,6 +432,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
         Some(Commands::Node { action }) => node_commands::handle_node(action).await,
         Some(Commands::Nodes { action }) => nodes_commands::handle_nodes(action).await,
+        Some(Commands::Service { action }) => service_commands::handle_service(action),
         #[cfg(feature = "openclaw-import")]
         Some(Commands::Import { action }) => import_commands::handle_import(action).await,
         #[cfg(feature = "tailscale")]
