@@ -142,7 +142,7 @@ This data is visible on the Nodes page and available to the agent via the
 
 | Command | Description |
 |---------|-------------|
-| `moltis node prepare` | Generate a device token and print the `add` command |
+| `moltis node generate-token` | Generate a device token and print the `add` command |
 | `moltis node list` | List all connected nodes |
 | `moltis node add --host <url> --token <tok>` | Join this machine to a gateway as a node |
 | `moltis node add ... --foreground` | Run in the terminal instead of installing a service |

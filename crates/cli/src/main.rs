@@ -145,7 +145,7 @@ enum Commands {
         #[command(subcommand)]
         action: memory_commands::MemoryAction,
     },
-    /// Manage remote nodes (prepare, add, remove, list).
+    /// Manage remote nodes (generate-token, add, remove, list).
     Node {
         #[command(subcommand)]
         action: node_commands::NodeAction,

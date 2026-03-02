@@ -8,7 +8,7 @@ pub enum NodeAction {
     /// Prints the token and the `moltis node add` command to run on the
     /// remote machine. This is the CLI equivalent of clicking "Generate Token"
     /// on the web UI Nodes page.
-    Prepare {
+    GenerateToken {
         /// Display name for the new device.
         #[arg(long)]
         name: Option<String>,
@@ -39,7 +39,7 @@ pub enum NodeAction {
         /// Gateway WebSocket URL (e.g. ws://your-server:9090/ws).
         #[arg(long, env = "MOLTIS_GATEWAY_URL")]
         host: String,
-        /// Device token from `moltis node prepare`.
+        /// Device token from `moltis node generate-token`.
         #[arg(long, env = "MOLTIS_DEVICE_TOKEN")]
         token: String,
         /// Display name for this node.
@@ -71,11 +71,11 @@ pub enum NodeAction {
 
 pub async fn handle_node(action: NodeAction) -> Result<()> {
     match action {
-        NodeAction::Prepare {
+        NodeAction::GenerateToken {
             name,
             host,
             api_key,
-        } => cmd_prepare(&host, api_key.as_deref(), name.as_deref()).await,
+        } => cmd_generate_token(&host, api_key.as_deref(), name.as_deref()).await,
 
         NodeAction::List { host, api_key } => cmd_list(&host, api_key.as_deref()).await,
 
@@ -175,7 +175,7 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
 // ── Gateway RPC helpers ────────────────────────────────────────────────────
 
 /// Call `device.token.create` on the gateway and print the token + command.
-async fn cmd_prepare(host: &str, api_key: Option<&str>, name: Option<&str>) -> Result<()> {
+async fn cmd_generate_token(host: &str, api_key: Option<&str>, name: Option<&str>) -> Result<()> {
     let mut params = serde_json::Map::new();
     if let Some(n) = name {
         params.insert("displayName".into(), serde_json::json!(n));
@@ -195,6 +195,8 @@ async fn cmd_prepare(host: &str, api_key: Option<&str>, name: Option<&str>) -> R
     println!();
     println!("Run this on the remote machine:");
     println!("  moltis node add --host {ws_url} --token {token}");
+    println!();
+    println!("The token is shown once and cannot be retrieved later.");
 
     Ok(())
 }
