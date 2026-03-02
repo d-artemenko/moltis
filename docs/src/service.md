@@ -68,12 +68,12 @@ This stops the service, removes the service file, and cleans up.
 | `moltis service restart` | Restart the service |
 | `moltis service logs` | Print log file path |
 
-## How It Differs from `moltis node install`
+## How It Differs from `moltis node add`
 
 `moltis service install` manages the **gateway** — the main Moltis server
 that hosts the web UI, chat sessions, and API.
 
-`moltis node install` manages a **headless node** — a client process on a
+`moltis node add` registers a **headless node** — a client process on a
 remote machine that connects back to a gateway for command execution. See
 [Multi-Node](nodes.md) for details.
 

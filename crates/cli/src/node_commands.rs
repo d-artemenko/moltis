@@ -1,129 +1,137 @@
 use {anyhow::Result, clap::Subcommand, std::time::Duration};
 
-/// `moltis node` subcommands — run a headless node on this machine.
+/// `moltis node` subcommands — connect this machine as a node to a gateway.
 #[derive(Subcommand)]
 pub enum NodeAction {
-    /// Connect to a gateway as a headless node (foreground).
+    /// Register this machine as a node for a gateway.
     ///
-    /// Runs the node process in the current terminal session.
-    /// Use `moltis node install` to run it as a background service instead.
-    Run {
-        /// Gateway WebSocket URL (e.g. ws://localhost:9090/ws).
+    /// Saves the connection parameters and installs an OS service (launchd on
+    /// macOS, systemd on Linux) that starts on boot and reconnects on failure.
+    /// Pass --foreground to run in the current terminal instead.
+    Add {
+        /// Gateway WebSocket URL (e.g. ws://your-server:9090/ws).
         #[arg(long, env = "MOLTIS_GATEWAY_URL")]
         host: String,
         /// Device token from the pairing flow.
         #[arg(long, env = "MOLTIS_DEVICE_TOKEN")]
         token: String,
-        /// Custom node ID (defaults to a random UUID).
-        #[arg(long)]
-        node_id: Option<String>,
         /// Display name for this node.
         #[arg(long)]
         name: Option<String>,
+        /// Custom node ID (defaults to a random UUID).
+        #[arg(long)]
+        node_id: Option<String>,
         /// Working directory for command execution.
         #[arg(long)]
         working_dir: Option<String>,
         /// Maximum command timeout in seconds.
         #[arg(long, default_value = "300")]
         timeout: u64,
+        /// Run in the foreground instead of installing as a service.
+        #[arg(long)]
+        foreground: bool,
     },
 
-    /// Install the node as a background OS service (launchd on macOS, systemd on Linux).
-    ///
-    /// Saves connection parameters and registers a service that starts on boot
-    /// and restarts on failure.
-    Install {
-        /// Gateway WebSocket URL (e.g. ws://localhost:9090/ws).
-        #[arg(long, env = "MOLTIS_GATEWAY_URL")]
-        host: String,
-        /// Device token from the pairing flow.
-        #[arg(long, env = "MOLTIS_DEVICE_TOKEN")]
-        token: String,
-        /// Custom node ID (defaults to a random UUID).
-        #[arg(long)]
-        node_id: Option<String>,
-        /// Display name for this node.
-        #[arg(long)]
-        name: Option<String>,
-        /// Working directory for command execution.
-        #[arg(long)]
-        working_dir: Option<String>,
-        /// Maximum command timeout in seconds.
-        #[arg(long, default_value = "300")]
-        timeout: u64,
-    },
+    /// Remove this machine as a node and uninstall the background service.
+    Remove,
 
-    /// Uninstall the node background service and remove its saved configuration.
-    Uninstall,
+    /// Show the current node connection status.
+    Status,
 
-    /// Print the path to the node service log file.
+    /// Print the path to the node log file.
     Logs,
 }
 
 pub async fn handle_node(action: NodeAction) -> Result<()> {
     match action {
-        NodeAction::Run {
+        NodeAction::Add {
             host,
             token,
-            node_id,
             name,
+            node_id,
             working_dir,
             timeout,
+            foreground,
         } => {
-            let config = moltis_node_host::NodeConfig {
-                gateway_url: host,
-                device_token: token,
-                node_id: node_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-                display_name: name,
-                platform: std::env::consts::OS.into(),
-                caps: vec!["system.run".into(), "system.which".into()],
-                commands: vec!["system.run".into(), "system.which".into()],
-                exec_timeout: Duration::from_secs(timeout),
-                working_dir,
-            };
+            let resolved_node_id = node_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-            let host = moltis_node_host::NodeHost::new(config);
-            host.run().await
+            if foreground {
+                let config = moltis_node_host::NodeConfig {
+                    gateway_url: host,
+                    device_token: token,
+                    node_id: resolved_node_id,
+                    display_name: name,
+                    platform: std::env::consts::OS.into(),
+                    caps: vec![
+                        "system.run".into(),
+                        "system.which".into(),
+                        "system.providers".into(),
+                    ],
+                    commands: vec![
+                        "system.run".into(),
+                        "system.which".into(),
+                        "system.providers".into(),
+                    ],
+                    exec_timeout: Duration::from_secs(timeout),
+                    working_dir,
+                };
+
+                let node = moltis_node_host::NodeHost::new(config);
+                node.run().await
+            } else {
+                let data_dir = moltis_config::data_dir();
+                let svc_config = moltis_node_host::ServiceConfig {
+                    gateway_url: host,
+                    device_token: token,
+                    node_id: Some(resolved_node_id),
+                    display_name: name,
+                    working_dir,
+                    timeout,
+                };
+
+                moltis_node_host::service::install(&data_dir, &svc_config)?;
+                println!("Node registered and service started.");
+                println!(
+                    "Logs: {}",
+                    moltis_node_host::service::log_path(&data_dir).display()
+                );
+                Ok(())
+            }
         },
 
-        NodeAction::Install {
-            host,
-            token,
-            node_id,
-            name,
-            working_dir,
-            timeout,
-        } => {
+        NodeAction::Remove => {
             let data_dir = moltis_config::data_dir();
-            let svc_config = moltis_node_host::ServiceConfig {
-                gateway_url: host,
-                device_token: token,
-                node_id,
-                display_name: name,
-                working_dir,
-                timeout,
-            };
-
-            moltis_node_host::service::install(&data_dir, &svc_config)?;
-            println!("Node service installed and started.");
-            println!(
-                "Logs: {}",
-                moltis_node_host::service::log_path(&data_dir).display()
-            );
+            moltis_node_host::service::uninstall(&data_dir)?;
+            println!("Node removed.");
             Ok(())
         },
 
-        NodeAction::Uninstall => {
+        NodeAction::Status => {
             let data_dir = moltis_config::data_dir();
-            moltis_node_host::service::uninstall(&data_dir)?;
-            println!("Node service uninstalled.");
+            let config_path = data_dir.join("node.json");
+
+            if !config_path.exists() {
+                println!("Not registered as a node.");
+                return Ok(());
+            }
+
+            let config = moltis_node_host::ServiceConfig::load(&data_dir)?;
+            let status = moltis_node_host::service::status()?;
+
+            println!("Gateway: {}", config.gateway_url);
+            if let Some(ref name) = config.display_name {
+                println!("Name:    {name}");
+            }
+            println!("Service: {status}");
             Ok(())
         },
 
         NodeAction::Logs => {
             let data_dir = moltis_config::data_dir();
-            let path = moltis_node_host::service::log_path(&data_dir);
-            println!("{}", path.display());
+            println!(
+                "{}",
+                moltis_node_host::service::log_path(&data_dir).display()
+            );
             Ok(())
         },
     }
