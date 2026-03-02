@@ -140,6 +140,33 @@ pub async fn handle_connection(
     let mut authenticated = header_authenticated;
     // Scopes from API key verification (if any).
     let mut api_key_scopes: Option<Vec<String>> = None;
+    // Device token verification result (if any).
+    let mut device_token_device_id: Option<String> = None;
+
+    // Check device token first (used by paired nodes).
+    if !authenticated
+        && let Some(ref dt) = params.auth.as_ref().and_then(|a| a.device_token.clone())
+        && let Some(ref store) = state.pairing_store
+    {
+        match store.verify_device_token(dt).await {
+            Ok(Some(verification)) => {
+                authenticated = true;
+                api_key_scopes = Some(verification.scopes.clone());
+                device_token_device_id = Some(verification.device_id.clone());
+                info!(
+                    conn_id = %conn_id,
+                    device_id = %verification.device_id,
+                    "ws: authenticated via device token"
+                );
+            },
+            Ok(None) => {
+                debug!(conn_id = %conn_id, "ws: device token not found or revoked");
+            },
+            Err(e) => {
+                debug!(conn_id = %conn_id, error = %e, "ws: device token verification failed");
+            },
+        }
+    }
 
     if !authenticated && let Some(ref cred_store) = state.credential_store {
         if cred_store.is_setup_complete() {
@@ -201,10 +228,18 @@ pub async fn handle_connection(
         return;
     }
 
-    let role = params
-        .role
-        .clone()
-        .unwrap_or_else(|| roles::OPERATOR.into());
+    // Device-token-authenticated connections default to "node" role.
+    let role = if device_token_device_id.is_some() {
+        params
+            .role
+            .clone()
+            .unwrap_or_else(|| roles::NODE.into())
+    } else {
+        params
+            .role
+            .clone()
+            .unwrap_or_else(|| roles::OPERATOR.into())
+    };
 
     // Determine scopes based on auth method.
     // API keys MUST declare scopes explicitly — empty scopes means no access.

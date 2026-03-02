@@ -2983,11 +2983,14 @@ pub async fn prepare_gateway(
     // Keep a reference to the browser service for periodic cleanup and shutdown.
     let browser_for_lifecycle = Arc::clone(&services.browser);
 
+    let pairing_store = Arc::new(crate::pairing::PairingStore::new(db_pool.clone()));
+
     let state = GatewayState::with_options(
         resolved_auth,
         services,
         Some(Arc::clone(&sandbox_router)),
         Some(Arc::clone(&credential_store)),
+        Some(pairing_store),
         is_localhost,
         behind_proxy,
         tls_enabled_for_gateway,
@@ -3101,11 +3104,20 @@ pub async fn prepare_gateway(
                 cs.wake("exec-event").await;
             });
         });
-        let exec_tool = moltis_tools::exec::ExecTool::default()
+        let mut exec_tool = moltis_tools::exec::ExecTool::default()
             .with_approval(Arc::clone(&approval_manager), broadcaster)
             .with_sandbox_router(Arc::clone(&sandbox_router))
             .with_env_provider(Arc::clone(&env_provider))
             .with_completion_callback(exec_cb);
+
+        // When tools.exec.host = "node", route commands to a remote node.
+        if config.tools.exec.host == "node" {
+            let provider = Arc::new(crate::node_exec::GatewayNodeExecProvider::new(
+                Arc::clone(&state),
+            ));
+            exec_tool =
+                exec_tool.with_node_provider(provider, config.tools.exec.node.clone());
+        }
 
         let cron_tool = moltis_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
 

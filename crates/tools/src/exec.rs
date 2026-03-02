@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 #[cfg(feature = "metrics")]
 use std::time::Instant;
@@ -50,6 +50,26 @@ pub trait ApprovalBroadcaster: Send + Sync {
 #[async_trait]
 pub trait EnvVarProvider: Send + Sync {
     async fn get_env_vars(&self) -> Vec<(String, secrecy::Secret<String>)>;
+}
+
+/// Provider that routes command execution to a remote node.
+///
+/// Implemented by the gateway crate to bridge `ExecTool` (in tools) with
+/// `node_exec::exec_on_node` (in gateway) without a direct dependency.
+#[async_trait]
+pub trait NodeExecProvider: Send + Sync {
+    /// Execute a shell command on a remote node.
+    async fn exec_on_node(
+        &self,
+        node_id: &str,
+        command: &str,
+        timeout_secs: u64,
+        cwd: Option<&str>,
+        env: Option<&HashMap<String, String>>,
+    ) -> anyhow::Result<ExecResult>;
+
+    /// Resolve a node reference (id or display name) to a node_id.
+    async fn resolve_node_id(&self, node_ref: &str) -> Option<String>;
 }
 
 /// Result of a shell command execution.
@@ -175,6 +195,10 @@ pub struct ExecTool {
     sandbox_router: Option<Arc<SandboxRouter>>,
     env_provider: Option<Arc<dyn EnvVarProvider>>,
     completion_callback: Option<ExecCompletionFn>,
+    /// When set, commands are forwarded to a remote node instead of local exec.
+    node_provider: Option<Arc<dyn NodeExecProvider>>,
+    /// Default node id or display name (from `tools.exec.node` config).
+    default_node: Option<String>,
 }
 
 impl Default for ExecTool {
@@ -190,6 +214,8 @@ impl Default for ExecTool {
             sandbox_router: None,
             env_provider: None,
             completion_callback: None,
+            node_provider: None,
+            default_node: None,
         }
     }
 }
@@ -228,6 +254,17 @@ impl ExecTool {
     /// Attach a callback that fires after every exec completion.
     pub fn with_completion_callback(mut self, cb: ExecCompletionFn) -> Self {
         self.completion_callback = Some(cb);
+        self
+    }
+
+    /// Route command execution to a remote node instead of local/sandbox.
+    pub fn with_node_provider(
+        mut self,
+        provider: Arc<dyn NodeExecProvider>,
+        default_node: Option<String>,
+    ) -> Self {
+        self.node_provider = Some(provider);
+        self.default_node = default_node;
         self
     }
 
@@ -287,6 +324,57 @@ impl AgentTool for ExecTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(self.default_timeout.as_secs())
             .min(1800); // cap at 30 minutes
+
+        // Node execution: forward to a remote node if configured.
+        if let Some(ref provider) = self.node_provider {
+            let node_ref = params
+                .get("node")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or_else(|| self.default_node.clone())
+                .ok_or_else(|| {
+                    Error::message(
+                        "tools.exec.host is 'node' but no node specified \
+                         (set tools.exec.node or pass 'node' parameter)",
+                    )
+                })?;
+
+            let node_id =
+                provider
+                    .resolve_node_id(&node_ref)
+                    .await
+                    .ok_or_else(|| {
+                        Error::message(format!("node '{node_ref}' not found or not connected"))
+                    })?;
+
+            let cwd = params
+                .get("working_dir")
+                .and_then(|v| v.as_str());
+
+            info!(
+                command,
+                node_id = %node_id,
+                timeout_secs,
+                "exec forwarding to remote node"
+            );
+
+            let result = provider
+                .exec_on_node(&node_id, command, timeout_secs, cwd, None)
+                .await
+                .map_err(|e| Error::message(format!("node exec failed: {e}")))?;
+
+            if let Some(ref cb) = self.completion_callback {
+                let preview_len = 200;
+                cb(ExecCompletionEvent {
+                    command: command.to_string(),
+                    exit_code: result.exit_code,
+                    stdout_preview: result.stdout.chars().take(preview_len).collect(),
+                    stderr_preview: result.stderr.chars().take(preview_len).collect(),
+                });
+            }
+
+            return Ok(serde_json::to_value(&result)?);
+        }
 
         // Check sandbox state early — we need it for working_dir resolution.
         let session_key = params.get("_session_key").and_then(|v| v.as_str());

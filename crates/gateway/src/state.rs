@@ -84,7 +84,7 @@ use {moltis_channels::ChannelReplyTarget, moltis_sessions::session_events::Sessi
 use crate::{
     auth::{CredentialStore, ResolvedAuth},
     nodes::NodeRegistry,
-    pairing::PairingState,
+    pairing::{PairingState, PairingStore},
     services::GatewayServices,
 };
 
@@ -358,6 +358,9 @@ pub struct GatewayState {
     /// Per-session sandbox router (None if sandbox is not configured).
     /// `Arc` because it is shared with `ExecTool`/`ProcessTool` in `moltis-tools`.
     pub sandbox_router: Option<Arc<SandboxRouter>>,
+    /// SQLite-backed pairing store for device token persistence.
+    /// `None` in tests that don't need pairing.
+    pub pairing_store: Option<Arc<PairingStore>>,
     /// Memory manager for long-term memory search (None if no embedding provider).
     /// `Arc` because it is cloned into background tokio tasks.
     pub memory_manager: Option<Arc<moltis_memory::manager::MemoryManager>>,
@@ -423,6 +426,7 @@ impl GatewayState {
             services,
             None,
             None,
+            None,
             false,
             false,
             false,
@@ -447,6 +451,7 @@ impl GatewayState {
         services: GatewayServices,
         sandbox_router: Option<Arc<SandboxRouter>>,
         credential_store: Option<Arc<CredentialStore>>,
+        pairing_store: Option<Arc<PairingStore>>,
         localhost_only: bool,
         behind_proxy: bool,
         tls_active: bool,
@@ -472,6 +477,7 @@ impl GatewayState {
             services,
             credential_store,
             sandbox_router,
+            pairing_store,
             memory_manager,
             localhost_only,
             behind_proxy,
