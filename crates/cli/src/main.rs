@@ -17,7 +17,6 @@ mod hooks_commands;
 mod import_commands;
 mod memory_commands;
 mod node_commands;
-mod nodes_commands;
 mod sandbox_commands;
 mod service_commands;
 #[cfg(feature = "tailscale")]
@@ -146,7 +145,7 @@ enum Commands {
         #[command(subcommand)]
         action: memory_commands::MemoryAction,
     },
-    /// Run a headless node that connects to a gateway.
+    /// Manage remote nodes (prepare, add, remove, list).
     Node {
         #[command(subcommand)]
         action: node_commands::NodeAction,
@@ -155,11 +154,6 @@ enum Commands {
     Service {
         #[command(subcommand)]
         action: service_commands::ServiceAction,
-    },
-    /// View connected nodes on a gateway.
-    Nodes {
-        #[command(subcommand)]
-        action: nodes_commands::NodesAction,
     },
     #[cfg(feature = "openclaw-import")]
     /// Import data from an OpenClaw installation.
@@ -431,7 +425,6 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Db { action }) => db_commands::handle_db(action).await,
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
         Some(Commands::Node { action }) => node_commands::handle_node(action).await,
-        Some(Commands::Nodes { action }) => nodes_commands::handle_nodes(action).await,
         Some(Commands::Service { action }) => service_commands::handle_service(action),
         #[cfg(feature = "openclaw-import")]
         Some(Commands::Import { action }) => import_commands::handle_import(action).await,

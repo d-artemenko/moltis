@@ -140,22 +140,15 @@ This data is visible on the Nodes page and available to the agent via the
 
 ## CLI Reference
 
-### `moltis node` — manage this machine as a node
-
 | Command | Description |
 |---------|-------------|
-| `moltis node add --host <url> --token <tok>` | Register as a node (installs service) |
-| `moltis node add ... --foreground` | Run in the terminal instead |
-| `moltis node remove` | Unregister and remove the service |
+| `moltis node prepare` | Generate a device token and print the `add` command |
+| `moltis node list` | List all connected nodes |
+| `moltis node add --host <url> --token <tok>` | Join this machine to a gateway as a node |
+| `moltis node add ... --foreground` | Run in the terminal instead of installing a service |
+| `moltis node remove` | Disconnect this machine and remove the service |
 | `moltis node status` | Show connection info and service status |
 | `moltis node logs` | Print log file path |
-
-### `moltis nodes` — view nodes connected to the gateway
-
-| Command | Description |
-|---------|-------------|
-| `moltis nodes list` | List all connected nodes |
-| `moltis nodes list --host http://server:9090` | List nodes on a remote gateway |
 
 ## Security
 

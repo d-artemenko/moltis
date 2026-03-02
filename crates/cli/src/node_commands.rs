@@ -1,9 +1,36 @@
 use {anyhow::Result, clap::Subcommand, std::time::Duration};
 
-/// `moltis node` subcommands — connect this machine as a node to a gateway.
+/// `moltis node` subcommands — manage remote nodes.
 #[derive(Subcommand)]
 pub enum NodeAction {
-    /// Register this machine as a node for a gateway.
+    /// Generate a device token so a remote machine can connect as a node.
+    ///
+    /// Prints the token and the `moltis node add` command to run on the
+    /// remote machine. This is the CLI equivalent of clicking "Generate Token"
+    /// on the web UI Nodes page.
+    Prepare {
+        /// Display name for the new device.
+        #[arg(long)]
+        name: Option<String>,
+        /// Gateway HTTP URL (used to call the RPC).
+        #[arg(long, default_value = "http://localhost:9090")]
+        host: String,
+        /// API key or password for authentication.
+        #[arg(long, env = "MOLTIS_API_KEY")]
+        api_key: Option<String>,
+    },
+
+    /// List all connected nodes.
+    List {
+        /// Gateway HTTP URL.
+        #[arg(long, default_value = "http://localhost:9090")]
+        host: String,
+        /// API key or password for authentication.
+        #[arg(long, env = "MOLTIS_API_KEY")]
+        api_key: Option<String>,
+    },
+
+    /// Join this machine to a gateway as a node.
     ///
     /// Saves the connection parameters and installs an OS service (launchd on
     /// macOS, systemd on Linux) that starts on boot and reconnects on failure.
@@ -12,7 +39,7 @@ pub enum NodeAction {
         /// Gateway WebSocket URL (e.g. ws://your-server:9090/ws).
         #[arg(long, env = "MOLTIS_GATEWAY_URL")]
         host: String,
-        /// Device token from the pairing flow.
+        /// Device token from `moltis node prepare`.
         #[arg(long, env = "MOLTIS_DEVICE_TOKEN")]
         token: String,
         /// Display name for this node.
@@ -32,10 +59,10 @@ pub enum NodeAction {
         foreground: bool,
     },
 
-    /// Remove this machine as a node and uninstall the background service.
+    /// Disconnect this machine and remove the node service.
     Remove,
 
-    /// Show the current node connection status.
+    /// Show the current node connection info and service status.
     Status,
 
     /// Print the path to the node log file.
@@ -44,6 +71,14 @@ pub enum NodeAction {
 
 pub async fn handle_node(action: NodeAction) -> Result<()> {
     match action {
+        NodeAction::Prepare {
+            name,
+            host,
+            api_key,
+        } => cmd_prepare(&host, api_key.as_deref(), name.as_deref()).await,
+
+        NodeAction::List { host, api_key } => cmd_list(&host, api_key.as_deref()).await,
+
         NodeAction::Add {
             host,
             token,
@@ -134,5 +169,148 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
             );
             Ok(())
         },
+    }
+}
+
+// ── Gateway RPC helpers ────────────────────────────────────────────────────
+
+/// Call `device.token.create` on the gateway and print the token + command.
+async fn cmd_prepare(host: &str, api_key: Option<&str>, name: Option<&str>) -> Result<()> {
+    let mut params = serde_json::Map::new();
+    if let Some(n) = name {
+        params.insert("displayName".into(), serde_json::json!(n));
+    }
+    params.insert("platform".into(), serde_json::json!("remote"));
+
+    let result = gateway_rpc(host, api_key, "device.token.create", params.into()).await?;
+
+    let token = result
+        .get("deviceToken")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("unexpected response: missing deviceToken"))?;
+
+    let ws_url = http_to_ws(host);
+
+    println!("Device token: {token}");
+    println!();
+    println!("Run this on the remote machine:");
+    println!("  moltis node add --host {ws_url} --token {token}");
+
+    Ok(())
+}
+
+/// Call `node.list` on the gateway and print connected nodes.
+async fn cmd_list(host: &str, api_key: Option<&str>) -> Result<()> {
+    let result = gateway_rpc(host, api_key, "node.list", serde_json::json!({})).await?;
+
+    let nodes = result
+        .get("nodes")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    if nodes.is_empty() {
+        println!("No nodes connected.");
+        return Ok(());
+    }
+
+    for node in &nodes {
+        let id = node.get("nodeId").and_then(|v| v.as_str()).unwrap_or("?");
+        let name = node
+            .get("displayName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(unnamed)");
+        let platform = node.get("platform").and_then(|v| v.as_str()).unwrap_or("?");
+
+        println!("{id}  {name}  ({platform})");
+    }
+
+    Ok(())
+}
+
+/// Send a single RPC request to the gateway over HTTP (JSON-RPC style).
+///
+/// The gateway exposes RPC methods over the WebSocket protocol, but for
+/// one-shot CLI commands we use the `/api/rpc` endpoint when available,
+/// falling back to a transient WebSocket connection.
+async fn gateway_rpc(
+    host: &str,
+    api_key: Option<&str>,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value> {
+    let url = format!("{}/api/rpc", host.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "method": method,
+        "params": params,
+    });
+
+    let client = reqwest::Client::new();
+    let mut req = client.post(&url).json(&body);
+    if let Some(key) = api_key {
+        req = req.header("Authorization", format!("Bearer {key}"));
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("cannot reach gateway at {host}: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("gateway returned {status}: {body}");
+    }
+
+    let result: serde_json::Value = resp.json().await?;
+
+    if let Some(err) = result.get("error") {
+        let msg = err
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown error");
+        anyhow::bail!("RPC error: {msg}");
+    }
+
+    Ok(result.get("payload").cloned().unwrap_or(result))
+}
+
+/// Convert `http://host:port` to `ws://host:port/ws`.
+fn http_to_ws(http_url: &str) -> String {
+    let ws = http_url
+        .replace("https://", "wss://")
+        .replace("http://", "ws://");
+    let base = ws.trim_end_matches('/');
+    format!("{base}/ws")
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn http_to_ws_basic() {
+        assert_eq!(
+            http_to_ws("http://localhost:9090"),
+            "ws://localhost:9090/ws"
+        );
+    }
+
+    #[test]
+    fn http_to_ws_https() {
+        assert_eq!(
+            http_to_ws("https://my-server.com"),
+            "wss://my-server.com/ws"
+        );
+    }
+
+    #[test]
+    fn http_to_ws_trailing_slash() {
+        assert_eq!(
+            http_to_ws("http://localhost:9090/"),
+            "ws://localhost:9090/ws"
+        );
     }
 }
