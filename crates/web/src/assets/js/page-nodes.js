@@ -108,9 +108,11 @@ function TabBar() {
 			(t) =>
 				html`<button
 					key=${t.id}
-					class="px-3 py-1.5 text-sm rounded-md transition-colors ${activeTab.value === t.id
-						? "bg-[var(--accent)] text-white"
-						: "bg-[var(--surface-alt)] text-[var(--text-muted)] hover:bg-[var(--hover)]"}"
+					class="px-3 py-1.5 text-sm rounded-md transition-colors ${
+						activeTab.value === t.id
+							? "bg-[var(--accent)] text-white"
+							: "bg-[var(--surface-alt)] text-[var(--text-muted)] hover:bg-[var(--hover)]"
+					}"
 					onClick=${() => (activeTab.value = t.id)}
 				>
 					${t.label}${t.count > 0 ? html` <span class="ml-1 opacity-70">(${t.count})</span>` : null}
@@ -145,11 +147,13 @@ function ConnectedNodesList() {
 							${n.platform || "unknown"} · v${n.version || "?"}
 							${n.remoteIp ? html` · ${n.remoteIp}` : null}
 						</div>
-						${n.capabilities?.length
-							? html`<div class="text-xs text-[var(--text-muted)] mt-1">
+						${
+							n.capabilities?.length
+								? html`<div class="text-xs text-[var(--text-muted)] mt-1">
 									caps: ${n.capabilities.join(", ")}
 								</div>`
-							: null}
+								: null
+						}
 					</div>
 				</div>`,
 		)}
@@ -236,9 +240,9 @@ function Toasts() {
 			(t) =>
 				html`<div
 					key=${t.id}
-					class="px-4 py-2 rounded-lg text-sm shadow-lg ${t.type === "error"
-						? "bg-red-600 text-white"
-						: "bg-green-600 text-white"}"
+					class="px-4 py-2 rounded-lg text-sm shadow-lg ${
+						t.type === "error" ? "bg-red-600 text-white" : "bg-green-600 text-white"
+					}"
 				>
 					${t.message}
 				</div>`,
