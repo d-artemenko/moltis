@@ -981,6 +981,9 @@ export function switchSession(key, searchContext, projectId) {
 	var cachedHistory = getSessionHistory(key);
 	var hasCache = Array.isArray(cachedHistory);
 	var cacheRevisionAtRequest = getHistoryRevision(key);
+	// Tell the server how many messages we already have cached so it can
+	// skip sending the full history when nothing changed.
+	if (hasCache) switchParams.cached_message_count = cachedHistory.length;
 	startSessionRefresh(key, !hasCache);
 	if (hasCache) {
 		renderHistory(key, cachedHistory, searchContext, null);
@@ -1004,9 +1007,10 @@ export function switchSession(key, searchContext, projectId) {
 
 			var entry = res.payload.entry || {};
 			ensureSessionInClientStore(key, entry, projectId);
+			var cacheHit = res.payload.historyCacheHit === true;
 			var serverHistory = Array.isArray(res.payload.history) ? res.payload.history : [];
 			var appliedServerHistory = false;
-			if (shouldApplyServerHistory(key, serverHistory, cacheRevisionAtRequest)) {
+			if (!cacheHit && shouldApplyServerHistory(key, serverHistory, cacheRevisionAtRequest)) {
 				replaceSessionHistory(key, serverHistory);
 				appliedServerHistory = true;
 			}
