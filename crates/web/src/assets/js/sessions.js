@@ -26,6 +26,7 @@ import {
 	toolCallSummary,
 } from "./helpers.js";
 import { attachMessageVoiceControl } from "./message-voice.js";
+import { restoreNodeSelection } from "./nodes-selector.js";
 import { updateSessionProjectSelect } from "./project-combo.js";
 import { currentPrefix, navigate, sessionPath } from "./router.js";
 import { settingsPath } from "./routes.js";
@@ -41,7 +42,6 @@ import {
 	upsertSessionHistoryMessage,
 } from "./stores/session-history-cache.js";
 import { sessionStore } from "./stores/session-store.js";
-import { restoreNodeSelection } from "./nodes-selector.js";
 import { confirmDialog } from "./ui.js";
 
 var SESSION_PREVIEW_MAX_CHARS = 200;

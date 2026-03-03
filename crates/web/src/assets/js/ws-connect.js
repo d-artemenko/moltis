@@ -113,10 +113,10 @@ export function connectWs(opts) {
 		// If the WebSocket never opened, the server likely rejected the
 		// upgrade (e.g. 401). Check auth status and redirect to login
 		// instead of endlessly reconnecting.
-		if (!wasConnected) {
-			checkAuthOrReconnect(opts, backoff);
-		} else {
+		if (wasConnected) {
 			scheduleReconnect(() => connectWs(opts), backoff);
+		} else {
+			checkAuthOrReconnect(opts, backoff);
 		}
 	};
 

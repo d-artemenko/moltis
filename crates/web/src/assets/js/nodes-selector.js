@@ -1,7 +1,7 @@
 // ── Node selector (chat toolbar dropdown) ───────────────────
 
-import { sendRpc } from "./helpers.js";
 import { onEvent } from "./events.js";
+import { sendRpc } from "./helpers.js";
 import * as S from "./state.js";
 import { nodeStore } from "./stores/node-store.js";
 
@@ -57,9 +57,9 @@ function buildNodeItem(node, currentId) {
 	var el = document.createElement("div");
 	el.className = "model-dropdown-item";
 	if (node && node.nodeId === currentId) el.classList.add("selected");
-	if (!node) {
+	if (!node && !currentId) {
 		// "Local" entry
-		if (!currentId) el.classList.add("selected");
+		el.classList.add("selected");
 	}
 
 	var label = document.createElement("span");
