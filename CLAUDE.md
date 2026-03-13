@@ -5,6 +5,9 @@ alwaysApply: true
 
 # CLAUDE.md
 
+Owner: Moltis core team
+Last reviewed: 2026-03-13
+
 Rust version of openclaw ([docs](https://docs.openclaw.ai), [code](https://github.com/openclaw/openclaw)).
 All code must have tests with high coverage. Always check for security.
 
